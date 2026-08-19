@@ -1,0 +1,727 @@
+package com.k9t2.mcpackmaker;
+import android.app.Dialog;
+
+import android.content.*;
+import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.view.*;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.*;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.zip.*;
+
+/**
+ * MC 基岩版材质编辑器
+ * UI-only redesign: keeps the original Bedrock resource-pack generation logic,
+ * while adding a consumer-friendly home, history, generator and settings UI.
+ */
+public class MainActivity extends android.app.Activity {
+    private static final int PICK_IMAGE = 1001;
+    private static final int SAVE_PACK = 1002;
+
+    private LinearLayout pageHost;
+    private LinearLayout bottomNav;
+    private int currentPage = 0;
+    private boolean darkMode;
+
+    private Spinner typeSpinner;
+    private EditText idInput;
+    private ImageView preview;
+    private TextView selectedText, listView, status;
+    private Uri selectedUri;
+    private File pendingPack;
+    private String pendingHistoryName = "";
+    private EditText packNameInput, authorInput, descriptionInput;
+    private final ArrayList<Entry> entries = new ArrayList<>();
+
+    private static final int GREEN = Color.rgb(52, 190, 73);
+    private static final int BLUE = Color.rgb(66, 139, 224);
+    private static final int PURPLE = Color.rgb(157, 104, 226);
+
+    private static class Entry {
+        final String id, type;
+        final Uri image;
+        Entry(String id, String type, Uri image) { this.id = id; this.type = type; this.image = image; }
+    }
+
+    @Override protected void onCreate(Bundle b) {
+        super.onCreate(b);
+        darkMode = getPreferences(MODE_PRIVATE).getBoolean("dark_mode", true);
+        buildShell();
+        showPage(0);
+    }
+
+    private void buildShell() {
+        LinearLayout root = new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(bg());
+
+        FrameLayout contentFrame = new FrameLayout(this);
+        pageHost = new LinearLayout(this);
+        pageHost.setOrientation(LinearLayout.VERTICAL);
+        contentFrame.addView(pageHost, new FrameLayout.LayoutParams(-1, -1));
+        root.addView(contentFrame, new LinearLayout.LayoutParams(-1, 0, 1));
+
+        bottomNav = new LinearLayout(this);
+        bottomNav.setOrientation(LinearLayout.HORIZONTAL);
+        bottomNav.setGravity(Gravity.CENTER);
+        bottomNav.setPadding(dp(8), dp(5), dp(8), dp(7));
+        root.addView(bottomNav, new LinearLayout.LayoutParams(-1, dp(76)));
+
+        setContentView(root);
+        root.setOnApplyWindowInsetsListener((v, insets) -> {
+            int top, bottom;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars());
+                top = i.top; bottom = i.bottom;
+            } else {
+                top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
+            }
+            v.setPadding(0, top, 0, bottom);
+            return insets;
+        });
+        refreshBottomNav();
+        styleWindow();
+    }
+
+    private void styleWindow() {
+        getWindow().setStatusBarColor(bg());
+        getWindow().setNavigationBarColor(bg());
+        int flags = 0;
+        if (!darkMode) flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+        getWindow().getDecorView().setSystemUiVisibility(flags);
+    }
+
+    private int bg() { return darkMode ? Color.rgb(17, 21, 27) : Color.rgb(247, 249, 252); }
+    private int card() { return darkMode ? Color.rgb(29, 34, 42) : Color.WHITE; }
+    private int card2() { return darkMode ? Color.rgb(35, 40, 49) : Color.rgb(246, 248, 251); }
+    private int text() { return darkMode ? Color.rgb(246, 248, 251) : Color.rgb(25, 29, 35); }
+    private int sub() { return darkMode ? Color.rgb(167, 175, 188) : Color.rgb(100, 108, 120); }
+    private int line() { return darkMode ? Color.rgb(53, 60, 70) : Color.rgb(228, 232, 239); }
+
+    private void showPage(int page) {
+        currentPage = page;
+        pageHost.removeAllViews();
+        pageHost.setBackgroundColor(bg());
+        if (page == 0) buildHome();
+        else if (page == 1) buildEditorList();
+        else if (page == 2) buildGenerator();
+        else buildMine();
+        refreshBottomNav();
+        styleWindow();
+    }
+
+    private void refreshBottomNav() {
+        if (bottomNav == null) return;
+        bottomNav.removeAllViews();
+        bottomNav.setBackgroundColor(darkMode ? Color.rgb(22, 26, 33) : Color.WHITE);
+        String[] icons = {"⌂", "☷", "✦", "♙"};
+        String[] labels = {"首页", "编辑列表", "生成", "我的"};
+        for (int i = 0; i < 4; i++) {
+            final int p = i;
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            item.setPadding(dp(3), dp(4), dp(3), dp(2));
+            TextView icon = tv(icons[i], 23, i == currentPage ? GREEN : sub(), true);
+            icon.setGravity(Gravity.CENTER);
+
+            TextView label = tv(labels[i], 12, i == currentPage ? GREEN : sub(), false);
+            label.setGravity(Gravity.CENTER);
+            item.addView(icon, new LinearLayout.LayoutParams(-1, dp(32)));
+            item.addView(label, new LinearLayout.LayoutParams(-1, dp(22)));
+            item.setOnClickListener(v -> showPage(p));
+            bottomNav.addView(item, new LinearLayout.LayoutParams(dp(82), -1));
+        }
+    }
+
+    private void buildHome() {
+        ScrollView scroll = scroll();
+        LinearLayout box = column();
+        box.setPadding(dp(28), dp(18), dp(24), dp(24));
+
+        LinearLayout top = row();
+        LinearLayout titles = column();
+        TextView title = tv("🧱  MC 基岩版材质编辑器", 26, text(), true);
+        TextView subTitle = tv("轻松创建你的专属材质包", 14, sub(), false);
+        titles.addView(title); titles.addView(subTitle, marginTop(dp(4)));
+        top.addView(titles, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView theme = tv(darkMode ? "深色模式  🌙" : "浅色模式  ☀️", 13, text(), true);
+        theme.setGravity(Gravity.CENTER);
+        theme.setPadding(dp(13), 0, dp(13), 0);
+        theme.setBackground(round(darkMode ? Color.rgb(39, 45, 56) : Color.rgb(235, 240, 247), 100, line(), 1));
+        theme.setOnClickListener(v -> toggleTheme());
+        top.addView(theme, new LinearLayout.LayoutParams(dp(116), dp(46)));
+        box.addView(top, marginBottom(dp(18)));
+
+        box.addView(sectionTitle("快速开始", "从一个空白项目开始，或继续编辑已有材质包"), marginBottom(dp(10)));
+        LinearLayout actions = row();
+        actions.setGravity(Gravity.CENTER);
+        actions.setWeightSum(3f);
+        actions.addView(actionCard("＋", "创建材质", "从零开始制作", GREEN, v -> showEditor()), equalActionParams(0));
+        actions.addView(actionCard("▣", "继续编辑", "打开最近项目", BLUE, v -> showPage(1)), equalActionParams(1));
+        actions.addView(actionCard("↗", "导入材质包", "导入现有材质包", PURPLE, v -> importPack()), equalActionParams(2));
+        box.addView(actions, marginBottom(dp(18)));
+
+        LinearLayout recentCard = cardColumn();
+        LinearLayout recentHead = row();
+        recentHead.addView(tv("最近项目", 18, text(), true), new LinearLayout.LayoutParams(0, -2, 1));
+        TextView all = tv("查看全部  ›", 13, sub(), false);
+        all.setOnClickListener(v -> showPage(1));
+        recentHead.addView(all);
+        recentCard.addView(recentHead, marginBottom(dp(8)));
+        addRecentRows(recentCard, 3);
+        box.addView(recentCard, marginBottom(dp(16)));
+
+        LinearLayout guide = cardColumn();
+        guide.addView(tv("使用指南", 18, text(), true), marginBottom(dp(8)));
+        addGuide(guide, "↻", "如何替换物品纹理", "查看详细教程", BLUE,
+                v -> showTextureGuide());
+        addGuide(guide, "▣", "材质包结构说明", "了解文件结构", PURPLE,
+                v -> showPackStructure());
+        addGuide(guide, "?", "常见问题解答", "解决你的疑惑", Color.rgb(238, 167, 31),
+                v -> showFAQ());
+        box.addView(guide, marginBottom(dp(16)));
+
+        LinearLayout team = cardColumn();
+        team.addView(tv("✨  制作团队", 18, text(), true), marginBottom(dp(4)));
+        team.addView(tv("感谢所有参与本项目制作、测试与提出建议的人", 13, sub(), false), marginBottom(dp(12)));
+        addPerson(team, "熬糕aogao", "项目开发 / 基岩版材质工具", GREEN);
+        addPerson(team, "测试与建议成员", "感谢参与测试和反馈的玩家", BLUE);
+        TextView more = tv("查看完整制作名单  ›", 13, GREEN, true);
+        more.setGravity(Gravity.CENTER_VERTICAL);
+        more.setPadding(dp(12), dp(12), dp(12), dp(12));
+        more.setOnClickListener(v -> showCredits());
+        team.addView(more);
+        box.addView(team);
+
+        scroll.addView(box);
+        pageHost.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+
+    private void buildEditorList() {
+        ScrollView scroll = scroll();
+        LinearLayout box = column();
+        box.setPadding(dp(20), dp(20), dp(20), dp(24));
+        box.addView(topTitle("编辑列表", "这里展示你过去制作过的所有材质包"), marginBottom(dp(14)));
+
+        EditText search = new EditText(this);
+        search.setSingleLine(true);
+        search.setHint("搜索材质包...");
+        search.setTextColor(text()); search.setHintTextColor(sub());
+        search.setTextSize(14); search.setPadding(dp(16), 0, dp(16), 0);
+        search.setBackground(round(card2(), 18, line(), 1));
+        box.addView(search, new LinearLayout.LayoutParams(-1, dp(50)));
+        box.addView(space(12));
+
+        LinearLayout list = column();
+        ArrayList<History> all = loadHistory();
+        if (all.isEmpty()) {
+            LinearLayout empty = cardColumn();
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(24), dp(38), dp(24), dp(38));
+            empty.addView(tv("✦", 36, GREEN, true), centerParams());
+            empty.addView(tv("还没有制作记录", 17, text(), true), marginTop(dp(8)));
+            empty.addView(tv("生成第一个材质包后，它会出现在这里", 13, sub(), false), marginTop(dp(5)));
+            list.addView(empty);
+        } else {
+            for (History h : all) addHistoryRow(list, h);
+        }
+        box.addView(list);
+        scroll.addView(box);
+        pageHost.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+
+    private void buildGenerator() {
+        ScrollView scroll = scroll();
+        LinearLayout box = column();
+        box.setPadding(dp(20), dp(20), dp(20), dp(24));
+        box.addView(topTitle("生成材质包", "完成编辑后，在这里生成可导入游戏的 .mcpack"), marginBottom(dp(14)));
+
+        LinearLayout project = cardColumn();
+        project.addView(tv("当前编辑内容", 18, text(), true), marginBottom(dp(10)));
+        TextView count = tv("🧱  已添加 " + entries.size() + " 个材质", 15, text(), true);
+        project.addView(count, marginBottom(dp(5)));
+        project.addView(tv("物品 / 方块 / 生物 / UI / 天空均可在编辑器中添加", 13, sub(), false));
+        box.addView(project, marginBottom(dp(12)));
+
+        LinearLayout form = cardColumn();
+        form.addView(tv("材质包信息", 18, text(), true), marginBottom(dp(10)));
+        packNameInput = input("材质包名称", "例如：我的 PVP 材质包");
+        form.addView(packNameInput, marginBottom(dp(10)));
+        EditText version = input("版本号", "1.0.0");
+        form.addView(version, marginBottom(dp(10)));
+        authorInput = input("作者（会显示在 Minecraft 材质包信息中）", "熬糕aogao");
+        authorInput.setText("熬糕aogao");
+        form.addView(authorInput, marginBottom(dp(10)));
+        descriptionInput = input("材质包描述", "我的专属基岩版材质包");
+        form.addView(descriptionInput);
+        box.addView(form, marginBottom(dp(14)));
+
+        TextView generate = primaryButton("✨  生成基岩版材质包");
+        generate.setOnClickListener(v -> generate());
+        box.addView(generate, marginBottom(dp(10)));
+        TextView hint = tv("生成后会弹出系统保存位置，你可以直接保存到手机文件夹。", 12, sub(), false);
+        hint.setGravity(Gravity.CENTER);
+        box.addView(hint);
+
+        scroll.addView(box);
+        pageHost.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+
+    private void buildMine() {
+        ScrollView scroll = scroll();
+        LinearLayout box = column();
+        box.setPadding(dp(20), dp(20), dp(20), dp(24));
+        box.addView(topTitle("我的", "软件设置与个人偏好"), marginBottom(dp(14)));
+
+        LinearLayout profile = cardColumn();
+        profile.addView(tv("🧱", 40, GREEN, true), marginBottom(dp(4)));
+        profile.addView(tv("材质创作者", 19, text(), true));
+        profile.addView(tv("本地制作，不需要登录账号", 13, sub(), false), marginTop(dp(3)));
+        box.addView(profile, marginBottom(dp(12)));
+
+        LinearLayout settings = cardColumn();
+        settings.addView(tv("设置", 18, text(), true), marginBottom(dp(8)));
+        addSetting(settings, "主题模式", darkMode ? "深色模式" : "浅色模式", "🌙 / ☀️", v -> toggleTheme());
+        addSetting(settings, "默认材质类型", getDefaultType(), "▣", v -> showDefaultTypeDialog());
+        addSetting(settings, "更新日志", "查看软件版本变化", "⌁", v -> showChangelog());
+        addSetting(settings, "关于软件", "MC 基岩版材质编辑器 1.2.0", "ⓘ", v -> showAbout());
+        box.addView(settings, marginBottom(dp(12)));
+
+        LinearLayout about = cardColumn();
+        about.addView(tv("✨ 项目说明", 18, text(), true), marginBottom(dp(6)));
+        about.addView(tv("本软件面向普通玩家，目标是让手机本地制作基岩版材质包变得简单。", 13, sub(), false));
+        box.addView(about);
+
+        scroll.addView(box);
+        pageHost.addView(scroll, new LinearLayout.LayoutParams(-1, -1));
+    }
+
+    private void buildEditorPage() {
+        // The original editor is kept as a full-screen dialog-style page reachable from Create.
+        final Dialog d = new Dialog(this);
+        d.getWindow();
+        LinearLayout root = column();
+        root.setPadding(dp(18), dp(16), dp(18), dp(18));
+        root.setBackgroundColor(bg());
+        LinearLayout editorHead = row();
+        editorHead.addView(tv("编辑材质", 23, text(), true), new LinearLayout.LayoutParams(0, dp(44), 1));
+        TextView done = tv("完成", 14, GREEN, true); done.setGravity(Gravity.CENTER); done.setPadding(dp(14),0,dp(14),0); done.setBackground(round(card2(), 14, line(), 1));
+        editorHead.addView(done, new LinearLayout.LayoutParams(dp(72), dp(42)));
+        root.addView(editorHead, marginBottom(dp(10)));
+        done.setOnClickListener(v -> d.dismiss());
+        typeSpinner = new Spinner(this);
+        String[] types = {"物品", "方块", "生物", "UI", "天空"};
+        typeSpinner.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, types));
+        root.addView(typeSpinner, marginBottom(dp(8)));
+        idInput = input("Minecraft ID", "例如 minecraft:diamond");
+        root.addView(idInput, marginBottom(dp(8)));
+        TextView suggestions = tv("常用 ID：minecraft:diamond · minecraft:stone · minecraft:grass_block · minecraft:oak_log · minecraft:diamond_sword · minecraft:water_bucket · minecraft:lava_bucket · minecraft:totem_of_undying", 12, sub(), false);
+        root.addView(suggestions, marginBottom(dp(10)));
+        TextView choose = secondaryButton("▣  选择图片");
+        choose.setOnClickListener(v -> pickImage());
+        root.addView(choose, marginBottom(dp(8)));
+        preview = new ImageView(this);
+        preview.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        preview.setBackground(round(card2(), 18, line(), 1));
+        root.addView(preview, new LinearLayout.LayoutParams(-1, dp(170)));
+        selectedText = tv("尚未选择图片", 12, sub(), false);
+        root.addView(selectedText, marginTop(dp(5)));
+        TextView add = primaryButton("＋  加入编辑列表");
+        add.setOnClickListener(v -> addEntry());
+        root.addView(add, marginTop(dp(10)));
+        listView = tv("暂无项目", 13, sub(), false);
+        root.addView(listView, marginTop(dp(10)));
+        TextView clear = secondaryButton("清空编辑列表");
+        clear.setOnClickListener(v -> { entries.clear(); refreshList(); setStatus("已清空编辑列表"); });
+        root.addView(clear, marginTop(dp(8)));
+        status = tv("准备就绪", 12, sub(), false);
+        root.addView(status, marginTop(dp(8)));
+        d.setContentView(root);
+        Window w = d.getWindow();
+        if (w != null) { w.setBackgroundDrawable(round(bg(), 24, line(), 1)); w.setLayout(-1, -1); }
+        d.setOnDismissListener(x -> { if (packNameInput != null) showPage(2); });
+        d.show();
+        if (d.getWindow() != null) d.getWindow().setLayout(-1, -1);
+    }
+
+    private void showEditor() { buildEditorPage(); }
+
+    private void addRecentRows(LinearLayout parent, int max) {
+        ArrayList<History> h = loadHistory();
+        if (h.isEmpty()) {
+            parent.addView(tv("还没有项目。点击“创建材质”开始你的第一个作品。", 13, sub(), false), marginTop(dp(6)));
+            return;
+        }
+        for (int i = 0; i < Math.min(max, h.size()); i++) addHistoryRow(parent, h.get(i));
+    }
+
+    private void addHistoryRow(LinearLayout parent, History h) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(12), dp(10), dp(10), dp(10));
+        row.setBackground(round(card2(), 15, Color.TRANSPARENT, 0));
+        TextView icon = tv("🧱", 27, text(), true);
+        row.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(46)));
+        LinearLayout info = column();
+        info.addView(tv(h.name, 14, text(), true));
+        info.addView(tv(h.date + "   " + h.count + " 个材质", 12, sub(), false), marginTop(dp(3)));
+        row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        TextView state = tv("已完成", 11, GREEN, true);
+        state.setGravity(Gravity.CENTER);
+        state.setPadding(dp(10), 0, dp(10), 0);
+        state.setBackground(round(darkMode ? Color.rgb(28, 72, 38) : Color.rgb(231, 248, 235), 12, Color.TRANSPARENT, 0));
+        row.addView(state, new LinearLayout.LayoutParams(dp(64), dp(30)));
+        parent.addView(row, marginBottom(dp(7)));
+    }
+
+    private void addGuide(LinearLayout parent, String iconText, String title,
+                          String desc, int accent, View.OnClickListener click) {
+
+        LinearLayout r = new LinearLayout(this);
+        r.setOrientation(LinearLayout.HORIZONTAL);
+        r.setGravity(Gravity.CENTER_VERTICAL);
+        r.setPadding(dp(10), dp(8), dp(8), dp(8));
+
+        r.setBackground(round(card2(), 13, Color.TRANSPARENT, 0));
+
+        TextView icon = tv(iconText, 20, accent, true);
+        icon.setGravity(Gravity.CENTER);
+
+        r.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+        LinearLayout info = column();
+
+        info.addView(
+                tv(title, 14, text(), true)
+        );
+
+        info.addView(
+                tv(desc, 11, sub(), false),
+                marginTop(dp(2))
+        );
+
+        r.addView(
+                info,
+                new LinearLayout.LayoutParams(0, -2, 1)
+        );
+
+        TextView arrow = tv("›", 22, sub(), false);
+        arrow.setGravity(Gravity.CENTER);
+
+        r.addView(
+                arrow,
+                new LinearLayout.LayoutParams(dp(25), dp(42))
+        );
+
+        r.setOnClickListener(click);
+
+        parent.addView(r, marginBottom(dp(6)));
+    }
+
+    private void addPerson(LinearLayout parent, String name, String role, int accent) {
+        LinearLayout r = row();
+        TextView avatar = tv("●", 19, accent, true); avatar.setGravity(Gravity.CENTER);
+        r.addView(avatar, new LinearLayout.LayoutParams(dp(40), dp(42)));
+        LinearLayout info = column();
+        info.addView(tv(name, 14, text(), true));
+        info.addView(tv(role, 11, sub(), false), marginTop(dp(2)));
+        r.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        parent.addView(r, marginBottom(dp(5)));
+    }
+
+    private void addSetting(LinearLayout parent, String title, String value, String icon, View.OnClickListener click) {
+        LinearLayout r = row(); r.setGravity(Gravity.CENTER_VERTICAL); r.setPadding(dp(5), dp(9), dp(5), dp(9));
+        TextView ic = tv(icon, 20, GREEN, true); ic.setGravity(Gravity.CENTER);
+        r.addView(ic, new LinearLayout.LayoutParams(dp(42), dp(44)));
+        LinearLayout info = column(); info.addView(tv(title, 14, text(), true)); info.addView(tv(value, 11, sub(), false), marginTop(dp(2)));
+        r.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+        r.addView(tv("›", 21, sub(), false));
+        r.setOnClickListener(click); parent.addView(r, marginBottom(dp(2)));
+    }
+
+    private LinearLayout actionCard(String icon, String title, String desc, int accent, View.OnClickListener click) {
+        LinearLayout c = cardColumn(); c.setGravity(Gravity.CENTER); c.setPadding(dp(8), dp(14), dp(8), dp(12)); c.setOnClickListener(click);
+        TextView ic = tv(icon, 32, accent, true); ic.setGravity(Gravity.CENTER); c.addView(ic, new LinearLayout.LayoutParams(-1, dp(42)));
+        c.addView(tv(title, 14, text(), true), centerParams());
+        c.addView(tv(desc, 10, sub(), false), centerMarginParams(dp(4)));
+        c.setBackground(round(darkMode ? blend(card(), accent, 0.12f) : blend(card(), accent, 0.10f), 18, blend(accent, bg(), 0.55f), 1));
+        return c;
+    }
+
+    private LinearLayout.LayoutParams equalActionParams(int position) {
+        LinearLayout.LayoutParams lp =
+                new LinearLayout.LayoutParams(0, dp(138), 1f);
+
+        // 三个卡片之间保持完全一致的 12dp 间距
+        int gap = dp(6);
+
+        if (position == 0) {
+            // 第一个：右侧 6dp
+            lp.setMargins(0, 0, gap, 0);
+        } else if (position == 1) {
+            // 中间：左右各 6dp
+            lp.setMargins(gap, 0, gap, 0);
+        } else {
+            // 第三个：左侧 6dp
+            lp.setMargins(gap, 0, 0, 0);
+        }
+
+        return lp;
+    }
+
+    private LinearLayout sectionTitle(String title, String desc) {
+        LinearLayout l = column();
+        l.addView(tv(title, 18, text(), true));
+        l.addView(tv(desc, 12, sub(), false), marginTop(dp(3)));
+        return l;
+    }
+
+    private LinearLayout topTitle(String title, String desc) {
+        LinearLayout l = column();
+        l.addView(tv(title, 26, text(), true));
+        l.addView(tv(desc, 13, sub(), false), marginTop(dp(4)));
+        return l;
+    }
+
+    private EditText input(String hint, String subHint) {
+        EditText e = new EditText(this); e.setSingleLine(true); e.setTextSize(14); e.setTextColor(text()); e.setHintTextColor(sub()); e.setHint(hint + "  ·  " + subHint); e.setPadding(dp(15), 0, dp(15), 0); e.setBackground(round(card2(), 15, line(), 1));
+        return e;
+    }
+
+    private TextView primaryButton(String s) { TextView t = tv(s, 15, Color.WHITE, true); t.setGravity(Gravity.CENTER); t.setBackground(round(GREEN, 17, Color.TRANSPARENT, 0)); return t; }
+    private TextView secondaryButton(String s) { TextView t = tv(s, 14, text(), true); t.setGravity(Gravity.CENTER); t.setBackground(round(card2(), 15, line(), 1)); return t; }
+
+    private ScrollView scroll() { ScrollView s = new ScrollView(this); s.setFillViewport(true); s.setBackgroundColor(bg()); return s; }
+    private LinearLayout column() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
+    private LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); return l; }
+    private LinearLayout cardColumn() { LinearLayout l = column(); l.setPadding(dp(14), dp(14), dp(14), dp(14)); l.setBackground(round(card(), 19, line(), 1)); return l; }
+    private TextView tv(String s, float size, int color, boolean bold) { TextView t = new TextView(this); t.setText(s); t.setTextSize(size); t.setTextColor(color); t.setTypeface(android.graphics.Typeface.DEFAULT, bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL); return t; }
+    private LinearLayout.LayoutParams weight() { return new LinearLayout.LayoutParams(0, dp(137), 1); }
+    private LinearLayout.LayoutParams weightMargin() { LinearLayout.LayoutParams p = weight(); p.setMargins(dp(6),0,dp(6),0); return p; }
+    private LinearLayout.LayoutParams marginTop(int v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.topMargin=v; return p; }
+    private LinearLayout.LayoutParams marginBottom(int v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.bottomMargin=v; return p; }
+    private LinearLayout.LayoutParams centerParams() { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.gravity=Gravity.CENTER_HORIZONTAL; return p; }
+    private LinearLayout.LayoutParams centerMarginParams(int top) { LinearLayout.LayoutParams p=centerParams(); p.topMargin=top; return p; }
+    private View space(int h) { Space s=new Space(this); return sized(s,-1,h); }
+    private <T extends View> T sized(T v,int w,int h){v.setLayoutParams(new LinearLayout.LayoutParams(w,h)); return v;}
+
+    private GradientDrawable round(int color, float radius, int strokeColor, int strokeWidth) { GradientDrawable g = new GradientDrawable(); g.setColor(color); g.setCornerRadius(dpF(radius)); if (strokeWidth>0) g.setStroke(dp(strokeWidth), strokeColor); return g; }
+    private int blend(int a, int b, float amount) { return Color.rgb((int)(Color.red(a)*(1-amount)+Color.red(b)*amount),(int)(Color.green(a)*(1-amount)+Color.green(b)*amount),(int)(Color.blue(a)*(1-amount)+Color.blue(b)*amount)); }
+    private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
+    private float dpF(float n) { return n * getResources().getDisplayMetrics().density; }
+
+    private String getDefaultType() {
+        return getPreferences(MODE_PRIVATE)
+                .getString("default_material_type", "物品");
+    }
+
+    private void showDefaultTypeDialog() {
+        final String[] types = {"物品", "方块", "生物", "UI", "天空"};
+        final String current = getDefaultType();
+
+        int checked = 0;
+        for (int i = 0; i < types.length; i++) {
+            if (types[i].equals(current)) {
+                checked = i;
+                break;
+            }
+        }
+
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("默认材质类型")
+                .setSingleChoiceItems(types, checked, (dialog, which) -> {
+                    getPreferences(MODE_PRIVATE)
+                            .edit()
+                            .putString("default_material_type", types[which])
+                            .apply();
+
+                    dialog.dismiss();
+                    showPage(3);
+                })
+                .setNegativeButton("取消", null)
+                .show();
+    }
+
+    private void toggleTheme() {
+        darkMode = !darkMode; getPreferences(MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply(); buildShell(); showPage(currentPage);
+    }
+
+    private void importPack() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("application/*"); i.addCategory(Intent.CATEGORY_OPENABLE); startActivityForResult(i, 2001);
+    }
+
+    private void showTextureGuide() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("如何替换物品纹理")
+                .setMessage(
+                        "① 点击“创建材质”\n\n" +
+                        "② 选择类型“物品”\n\n" +
+                        "③ 输入 Minecraft ID\n" +
+                        "例如：minecraft:diamond\n\n" +
+                        "④ 点击“选择图片”\n" +
+                        "选择你准备好的 PNG 图片。\n\n" +
+                        "⑤ 点击“加入编辑列表”\n\n" +
+                        "⑥ 前往“生成”，填写材质包名称和作者。\n\n" +
+                        "⑦ 点击“生成基岩版材质包”。\n\n" +
+                        "生成的 .mcpack 可以直接用于 Minecraft 基岩版。"
+                )
+                .setPositiveButton("知道了", null)
+                .show();
+    }
+
+    private void showPackStructure() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("材质包结构说明")
+                .setMessage(
+                        "一个 Minecraft 基岩版材质包通常包含：\n\n" +
+                        "📄 manifest.json\n" +
+                        "材质包的基本信息和版本。\n\n" +
+                        "📁 textures/\n" +
+                        "存放各种纹理图片。\n\n" +
+                        "📁 textures/items/\n" +
+                        "物品纹理。\n\n" +
+                        "📁 textures/blocks/\n" +
+                        "方块纹理。\n\n" +
+                        "📁 textures/entity/\n" +
+                        "生物相关纹理。\n\n" +
+                        "📁 textures/ui/\n" +
+                        "UI 相关纹理。\n\n" +
+                        "📁 textures/environment/\n" +
+                        "天空等环境纹理。\n\n" +
+                        "本编辑器会自动生成这些基础结构，普通玩家不需要手动创建。"
+                )
+                .setPositiveButton("知道了", null)
+                .show();
+    }
+
+    private void showFAQ() {
+        new android.app.AlertDialog.Builder(this)
+                .setTitle("常见问题解答")
+                .setMessage(
+                        "Q：需要电脑才能制作吗？\n" +
+                        "A：不需要，本软件就是面向手机用户设计的。\n\n" +
+
+                        "Q：支持哪些 Minecraft？\n" +
+                        "A：当前目标为 Minecraft 基岩版 1.26+。\n\n" +
+
+                        "Q：图片必须是什么格式？\n" +
+                        "A：建议使用 PNG 图片。\n\n" +
+
+                        "Q：为什么必须输入 namespace:id？\n" +
+                        "A：这是 Minecraft 识别物品和方块的重要方式。\n" +
+                        "例如：minecraft:diamond。\n\n" +
+
+                        "Q：生成后怎么安装？\n" +
+                        "A：保存 .mcpack 后，可以使用 Minecraft 打开。\n\n" +
+
+                        "Q：可以修改模组里的物品吗？\n" +
+                        "A：可以尝试输入对应模组提供的完整 ID，例如：modid:item_name。\n\n" +
+
+                        "Q：会不会影响原版材质？\n" +
+                        "A：材质包主要覆盖你制作的对应纹理，具体效果取决于 Minecraft 和资源包结构。"
+                )
+                .setPositiveButton("知道了", null)
+                .show();
+    }
+
+    private void showCredits() {
+        new android.app.AlertDialog.Builder(this).setTitle("制作名单")
+                .setMessage("K9T2\n项目开发 / 基岩版材质工具\n\n测试与建议\n感谢所有参与测试、反馈问题和提出功能建议的玩家\n\n特别感谢\n每一位使用、分享和支持本项目的人。")
+                .setPositiveButton("好的", null).show();
+    }
+    private void showChangelog() { new android.app.AlertDialog.Builder(this).setTitle("更新日志").setMessage("1.2.0\n• 全新首页与双主题 UI\n• 增加材质包历史列表\n• 增加生成中心\n• 增加制作名单\n• 优化手机端操作体验\n\n材质生成核心功能保持不变。 ").setPositiveButton("关闭", null).show(); }
+    private void showAbout() { new android.app.AlertDialog.Builder(this).setTitle("关于软件").setMessage("MC 基岩版材质编辑器\n版本 1.2.0-bedrock\n\n面向普通玩家的手机本地材质包制作工具。\n支持 Minecraft Bedrock 1.26+ 材质包生成。 ").setPositiveButton("关闭", null).show(); }
+
+    private static class History { String name, date; int count; History(String n,String d,int c){name=n;date=d;count=c;} }
+    private ArrayList<History> loadHistory() {
+        ArrayList<History> out = new ArrayList<>();
+        String raw = getPreferences(MODE_PRIVATE).getString("history", ""); if (raw.isEmpty()) return out;
+        for (String line : raw.split("\\n")) { String[] p=line.split("\\|",-1); if(p.length>=3){try{out.add(new History(p[0],p[1],Integer.parseInt(p[2])));}catch(Exception ignored){}} }
+        return out;
+    }
+    private void saveHistory(String name) {
+        ArrayList<History> h=loadHistory(); String date=new SimpleDateFormat("yyyy-MM-dd HH:mm",Locale.getDefault()).format(new Date());
+        h.add(0,new History(name,date,entries.size())); while(h.size()>20)h.remove(h.size()-1);
+        StringBuilder s=new StringBuilder(); for(History x:h)s.append(x.name.replace("|","_")).append('|').append(x.date).append('|').append(x.count).append('\n');
+        getPreferences(MODE_PRIVATE).edit().putString("history",s.toString()).apply();
+    }
+
+    private void pickImage() {
+        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT); i.setType("image/*"); i.addCategory(Intent.CATEGORY_OPENABLE); i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION); startActivityForResult(i,PICK_IMAGE);
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(requestCode==PICK_IMAGE && resultCode==RESULT_OK && data!=null){
+            selectedUri=data.getData(); if(selectedUri==null)return;
+            try{getContentResolver().takePersistableUriPermission(selectedUri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}
+            try{Bitmap b=BitmapFactory.decodeStream(getContentResolver().openInputStream(selectedUri)); if(b==null)throw new IOException("无法解析图片"); preview.setImageBitmap(b); selectedText.setText("已选择："+fileName(selectedUri));}catch(Exception e){Toast.makeText(this,"读取失败："+e.getMessage(),Toast.LENGTH_LONG).show();}
+        }
+        if(requestCode==SAVE_PACK && resultCode==RESULT_OK && data!=null && pendingPack!=null){
+            Uri target=data.getData(); if(target==null)return;
+            try(InputStream in=new FileInputStream(pendingPack); OutputStream out=getContentResolver().openOutputStream(target)){
+                if(out==null)throw new IOException("无法打开保存位置"); byte[] buf=new byte[8192]; int n; while((n=in.read(buf))!=-1)out.write(buf,0,n); out.flush();
+                setStatus("材质包已保存"); if(!pendingHistoryName.isEmpty()) saveHistory(pendingHistoryName); Toast.makeText(this,"生成完成！",Toast.LENGTH_LONG).show(); showPage(1);
+            }catch(Exception e){Toast.makeText(this,"保存失败："+e.getMessage(),Toast.LENGTH_LONG).show();}
+        }
+        if(requestCode==2001 && resultCode==RESULT_OK){ Toast.makeText(this,"导入入口已准备好；材质包解析功能将在后续版本完善。",Toast.LENGTH_LONG).show(); }
+    }
+
+    private void addEntry(){
+        String id=idInput.getText().toString().trim(); String type=typeSpinner.getSelectedItem().toString();
+        if(!validId(id)){Toast.makeText(this,"ID 格式错误，需要 namespace:id",Toast.LENGTH_LONG).show();return;}
+        if(selectedUri==null){Toast.makeText(this,"请先选择图片",Toast.LENGTH_LONG).show();return;}
+        for(Entry e:entries)if(e.id.equals(id)&&e.type.equals(type)){Toast.makeText(this,"这个项目已经存在",Toast.LENGTH_SHORT).show();return;}
+        entries.add(new Entry(id,type,selectedUri)); refreshList(); setStatus("已加入："+id); idInput.setText(""); selectedUri=null; preview.setImageDrawable(null); selectedText.setText("尚未选择图片");
+    }
+    private void refreshList(){if(entries.isEmpty()){listView.setText("暂无项目");return;}StringBuilder s=new StringBuilder();for(int i=0;i<entries.size();i++){Entry e=entries.get(i);s.append(i+1).append(". ").append(e.type).append("  ").append(e.id).append('\n');}listView.setText(s.toString());}
+    private void setStatus(String s){if(status!=null)status.setText(s);}
+
+    private void generate(){
+        if(entries.isEmpty()){Toast.makeText(this,"请先在编辑器加入至少一个项目",Toast.LENGTH_LONG).show();showEditor();return;}
+        try{
+            String name=(packNameInput==null?"":packNameInput.getText().toString().trim()); if(name.isEmpty())name="我的基岩材质"; if(!name.toLowerCase(Locale.ROOT).endsWith(".mcpack"))name += ".mcpack";
+            String author = authorInput==null ? "熬糕aogao" : authorInput.getText().toString().trim();
+            if(author.isEmpty()) author="熬糕aogao";
+            String description = descriptionInput==null ? "个人制作的 Minecraft 基岩版材质包" : descriptionInput.getText().toString().trim();
+            if(description.isEmpty()) description="个人制作的 Minecraft 基岩版材质包";
+            File work=new File(getCacheDir(),"mcpack_build"); delete(work); if(!work.mkdirs())throw new IOException("无法创建工作目录"); buildBedrock(work, author, description);
+            pendingPack=new File(getCacheDir(),name); if(pendingPack.exists())pendingPack.delete(); zip(work,pendingPack); pendingHistoryName=name.replace(".mcpack","");
+            Intent save=new Intent(Intent.ACTION_CREATE_DOCUMENT);save.setType("application/zip");save.putExtra(Intent.EXTRA_TITLE,name);startActivityForResult(save,SAVE_PACK);
+        }catch(Exception e){Toast.makeText(this,"生成失败："+e.getMessage(),Toast.LENGTH_LONG).show();setStatus("生成失败");}
+    }
+
+    private void buildBedrock(File root, String author, String description)throws Exception{
+        File textures=new File(root,"textures"),items=new File(textures,"items"),blocks=new File(textures,"blocks"),entity=new File(textures,"entity"),env=new File(textures,"environment");
+        items.mkdirs();blocks.mkdirs();entity.mkdirs();env.mkdirs(); Map<String,String> itemMap=new LinkedHashMap<>(),terrainMap=new LinkedHashMap<>();
+        for(Entry e:entries){String[]p=e.id.split(":",2);String namespace=p[0],id=p[1],base=safe(id);if("物品".equals(e.type)){File out=new File(items,namespace+"_"+base+".png");copyAsPng(e.image,out);itemMap.put(e.id,"textures/items/"+namespace+"_"+base);}else if("方块".equals(e.type)){File out=new File(blocks,namespace+"_"+base+".png");copyAsPng(e.image,out);terrainMap.put(e.id,"textures/blocks/"+namespace+"_"+base);}else if("生物".equals(e.type)){copyAsPng(e.image,new File(entity,namespace+"_"+base+".png"));}else if("天空".equals(e.type)){copyAsPng(e.image,new File(env,"sky.png"));}else if("UI".equals(e.type)){File ui=new File(textures,"ui");ui.mkdirs();copyAsPng(e.image,new File(ui,namespace+"_"+base+".png"));}}
+        writeItemTextureJson(new File(textures,"item_texture.json"),itemMap);writeTerrainTextureJson(new File(textures,"terrain_texture.json"),terrainMap);
+        String h=UUID.randomUUID().toString(),m=UUID.randomUUID().toString();
+        String safeAuthor = author==null||author.trim().isEmpty()?"熬糕aogao":author.trim();
+        String manifest="{\n  \"format_version\": 2,\n  \"header\": {\n    \"name\": \"MC 基岩版材质编辑器\",\n    \"description\": \""+json(description)+" | 作者："+json(safeAuthor)+" | 禁止商业使用\",\n    \"uuid\": \""+h+"\",\n    \"version\": [1, 0, 0],\n    \"min_engine_version\": [1, 26, 0]\n  },\n  \"modules\": [{\n    \"type\": \"resources\",\n    \"uuid\": \""+m+"\",\n    \"version\": [1, 0, 0]\n  }]\n}\n";
+        write(new File(root,"manifest.json"),manifest);
+        String info = "MC 基岩版材质编辑器 - 制作信息\n\n作者："+safeAuthor+"\n开发成员：熬糕aogao\n\n使用许可：仅限个人与非商业用途。\n禁止将本材质包用于商业销售、付费服务、商业宣传或其他商业用途。\n如需商业使用，请先联系作者获得授权。\n\n本文件随材质包一起发布，请勿删除。\n";
+        write(new File(root,"制作信息.txt"), info);
+    }
+    private void writeItemTextureJson(File f,Map<String,String> map)throws Exception{StringBuilder j=new StringBuilder();j.append("{\n  \"resource_pack_name\":\"MC 基岩版材质编辑器\",\n  \"texture_name\":\"atlas.items\",\n  \"texture_data\":{\n");int i=0;for(Map.Entry<String,String>x:map.entrySet()){if(i++>0)j.append(",\n");j.append("    \"").append(json(x.getKey())).append("\":{\"textures\":\"").append(x.getValue()).append("\"}");}j.append("\n  }\n}\n");write(f,j.toString());}
+    private void writeTerrainTextureJson(File f,Map<String,String> map)throws Exception{StringBuilder j=new StringBuilder();j.append("{\n  \"resource_pack_name\":\"MC 基岩版材质编辑器\",\n  \"texture_name\":\"atlas.terrain\",\n  \"texture_data\":{\n");int i=0;for(Map.Entry<String,String>x:map.entrySet()){if(i++>0)j.append(",\n");j.append("    \"").append(json(x.getKey())).append("\":{\"textures\":[\"").append(x.getValue()).append("\"]}");}j.append("\n  }\n}\n");write(f,j.toString());}
+    private void copyAsPng(Uri uri,File out)throws Exception{Bitmap b=BitmapFactory.decodeStream(getContentResolver().openInputStream(uri));if(b==null)throw new IOException("图片无法解码");File p=out.getParentFile();if(p!=null)p.mkdirs();try(FileOutputStream fos=new FileOutputStream(out)){if(!b.compress(Bitmap.CompressFormat.PNG,100,fos))throw new IOException("PNG 编码失败");}}
+    private boolean validId(String id){if(id==null||id.isEmpty())return false;String[]p=id.split(":",-1);return p.length==2&&p[0].matches("[a-z0-9_.-]+")&&p[1].matches("[a-z0-9_./-]+");}
+    private String safe(String s){return s.replace(":","_").replaceAll("[^a-zA-Z0-9_.-]","_");}
+    private String json(String s){return s.replace("\\","\\\\").replace("\"","\\\"");}
+    private String fileName(Uri uri){try(android.database.Cursor c=getContentResolver().query(uri,new String[]{OpenableColumns.DISPLAY_NAME},null,null,null)){if(c!=null&&c.moveToFirst())return c.getString(0);}catch(Exception ignored){}return uri.toString();}
+    private void write(File f,String s)throws Exception{File p=f.getParentFile();if(p!=null)p.mkdirs();try(FileOutputStream o=new FileOutputStream(f)){o.write(s.getBytes(StandardCharsets.UTF_8));}}
+    private void zip(File dir,File out)throws Exception{try(ZipOutputStream z=new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(out)))){zipRec(dir,dir,z);}}
+    private void zipRec(File root,File f,ZipOutputStream z)throws Exception{File[]list=f.listFiles();if(list==null)return;for(File x:list){String name=root.toURI().relativize(x.toURI()).getPath();if(x.isDirectory())zipRec(root,x,z);else{z.putNextEntry(new ZipEntry(name));try(InputStream in=new BufferedInputStream(new FileInputStream(x))){byte[]b=new byte[8192];int n;while((n=in.read(b))!=-1)z.write(b,0,n);}z.closeEntry();}}}
+    private void delete(File f){if(!f.exists())return;File[]list=f.listFiles();if(list!=null)for(File x:list)delete(x);f.delete();}
+}
