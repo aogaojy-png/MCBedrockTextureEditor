@@ -1,0 +1,133 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0a0e14;
+    color: #f0f3f6;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    width: 100%;
+    text-align: center;
+}
+
+h1 {
+    font-size: 2.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #52c073, #3a8f5a);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 12px;
+}
+
+.subtitle {
+    font-size: 1.1rem;
+    color: #a0aab8;
+    margin-bottom: 48px;
+}
+
+.features {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 48px;
+}
+
+.feature-card {
+    background: #181e28;
+    border-radius: 16px;
+    padding: 24px 16px;
+    border: 1px solid #2a3340;
+    transition: 0.3s;
+}
+
+.feature-card:hover {
+    border-color: #52c073;
+    transform: translateY(-2px);
+}
+
+.feature-card span {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 8px;
+}
+
+.feature-card h3 {
+    font-size: 1rem;
+    margin-bottom: 6px;
+}
+
+.feature-card p {
+    font-size: 0.85rem;
+    color: #8892a0;
+}
+
+.download-section {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 48px;
+}
+
+.btn {
+    display: inline-block;
+    padding: 14px 36px;
+    border-radius: 12px;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1rem;
+    transition: 0.3s;
+}
+
+.btn {
+    background: #52c073;
+    color: #0a0e14;
+}
+
+.btn:hover {
+    background: #60d080;
+    transform: scale(1.02);
+}
+
+.btn-secondary {
+    background: transparent;
+    color: #f0f3f6;
+    border: 1px solid #2a3340;
+}
+
+.btn-secondary:hover {
+    border-color: #52c073;
+    background: rgba(82, 192, 115, 0.1);
+}
+
+.footer {
+    font-size: 0.85rem;
+    color: #5a6470;
+    border-top: 1px solid #1a222e;
+    padding-top: 24px;
+}
+
+.footer p {
+    margin: 4px 0;
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 1.8rem;
+    }
+    .features {
+        grid-template-columns: 1fr 1fr;
+    }
+}
