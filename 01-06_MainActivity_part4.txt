@@ -1,0 +1,378 @@
+    ImageView icon = new ImageView(this);
+    icon.setImageResource(R.drawable.title_icon);
+    LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(28), dp(28));
+    iconParams.gravity = Gravity.CENTER_VERTICAL;
+    row.addView(icon, iconParams);
+
+    LinearLayout info = column();
+    info.addView(tv(p.name, 14, text(), true));
+    info.addView(tv(p.date + "   " + p.entries.size() + " 个材质", 12, sub(), false), marginTop(dp(3)));
+    row.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+
+    TextView state = tv("打开", 11, GREEN, true);
+    state.setGravity(Gravity.CENTER);
+    state.setPadding(dp(10), 0, dp(10), 0);
+    state.setBackground(round(darkMode ? Color.rgb(28, 72, 38) : Color.rgb(231, 248, 235), 12, Color.TRANSPARENT, 0));
+    row.addView(state, new LinearLayout.LayoutParams(dp(64), dp(30)));
+
+    row.setOnClickListener(v -> {
+        currentProject = p;
+        entries.clear();
+        entries.addAll(p.entries);
+        showPage(4);
+    });
+    parent.addView(row, marginBottom(dp(7)));
+}
+
+private void addGuide(LinearLayout parent, String iconText, String title,
+                      String desc, int accent, View.OnClickListener click) {
+    LinearLayout r = new LinearLayout(this);
+    r.setOrientation(LinearLayout.HORIZONTAL);
+    r.setGravity(Gravity.CENTER_VERTICAL);
+    r.setPadding(dp(10), dp(8), dp(8), dp(8));
+    r.setBackground(round(card2(), 13, Color.TRANSPARENT, 0));
+
+    TextView icon = tv(iconText, 20, accent, true);
+    icon.setGravity(Gravity.CENTER);
+    r.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+
+    LinearLayout info = column();
+    info.addView(tv(title, 14, text(), true));
+    info.addView(tv(desc, 11, sub(), false), marginTop(dp(2)));
+    r.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+
+    TextView arrow = tv("›", 22, sub(), false);
+    arrow.setGravity(Gravity.CENTER);
+    r.addView(arrow, new LinearLayout.LayoutParams(dp(25), dp(42)));
+    r.setOnClickListener(click);
+    parent.addView(r, marginBottom(dp(6)));
+}
+
+private void addPerson(LinearLayout parent, String name, String role, int accent) {
+    LinearLayout r = row();
+    TextView avatar = tv("●", 19, accent, true); avatar.setGravity(Gravity.CENTER);
+    r.addView(avatar, new LinearLayout.LayoutParams(dp(40), dp(42)));
+    LinearLayout info = column();
+    info.addView(tv(name, 14, text(), true));
+    info.addView(tv(role, 11, sub(), false), marginTop(dp(2)));
+    r.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+    parent.addView(r, marginBottom(dp(5)));
+}
+
+private void addSetting(LinearLayout parent, String title, String value, String icon, View.OnClickListener click) {
+    LinearLayout r = row(); r.setGravity(Gravity.CENTER_VERTICAL); r.setPadding(dp(5), dp(9), dp(5), dp(9));
+    TextView ic = tv(icon, 20, GREEN, true); ic.setGravity(Gravity.CENTER);
+    r.addView(ic, new LinearLayout.LayoutParams(dp(42), dp(44)));
+    LinearLayout info = column(); info.addView(tv(title, 14, text(), true)); info.addView(tv(value, 11, sub(), false), marginTop(dp(2)));
+    r.addView(info, new LinearLayout.LayoutParams(0, -2, 1));
+    r.addView(tv("›", 21, sub(), false));
+    r.setOnClickListener(click); parent.addView(r, marginBottom(dp(2)));
+}
+
+private LinearLayout actionCard(String icon, String title, String desc, int accent, View.OnClickListener click) {
+    LinearLayout c = cardColumn(); c.setGravity(Gravity.CENTER); c.setPadding(dp(8), dp(14), dp(8), dp(12)); c.setOnClickListener(click);
+    TextView ic = tv(icon, 32, accent, true); ic.setGravity(Gravity.CENTER); c.addView(ic, new LinearLayout.LayoutParams(-1, dp(42)));
+    c.addView(tv(title, 14, text(), true), centerParams());
+    c.addView(tv(desc, 10, sub(), false), centerMarginParams(dp(4)));
+    c.setBackground(round(darkMode ? blend(card(), accent, 0.12f) : blend(card(), accent, 0.10f), 18, blend(accent, bg(), 0.55f), 1));
+    return c;
+}
+
+private LinearLayout statItem(String label, String value, int accent) {
+    LinearLayout box = column();
+    box.setGravity(Gravity.CENTER);
+    box.setPadding(dp(6), dp(8), dp(6), dp(6));
+    box.setBackground(round(card2(), 14, Color.TRANSPARENT, 0));
+    box.addView(tv(value, 20, accent, true), centerParams());
+    box.addView(tv(label, 11, sub(), false), centerMarginParams(dp(2)));
+    return box;
+}
+
+private LinearLayout.LayoutParams equalActionParams(int position) {
+    LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, dp(138), 1f);
+    int gap = dp(6);
+    if (position == 0) lp.setMargins(0, 0, gap, 0);
+    else if (position == 1) lp.setMargins(gap, 0, gap, 0);
+    else lp.setMargins(gap, 0, 0, 0);
+    return lp;
+}
+
+private LinearLayout sectionTitle(String title, String desc) {
+    LinearLayout l = column();
+    l.addView(tv(title, 18, text(), true));
+    l.addView(tv(desc, 12, sub(), false), marginTop(dp(3)));
+    return l;
+}
+
+private LinearLayout topTitle(String title, String desc) {
+    LinearLayout l = column();
+    l.addView(tv(title, 26, text(), true));
+    l.addView(tv(desc, 13, sub(), false), marginTop(dp(4)));
+    return l;
+}
+
+private String getDefaultType() {
+    return getPreferences(MODE_PRIVATE).getString("default_material_type", "物品");
+}
+
+private void showDefaultTypeDialog() {
+    final String[] types = {"物品", "方块", "生物", "UI", "天空"};
+    final String current = getDefaultType();
+    int checked = 0;
+    for (int i = 0; i < types.length; i++) {
+        if (types[i].equals(current)) { checked = i; break; }
+    }
+    new AlertDialog.Builder(this)
+            .setTitle("默认材质类型")
+            .setSingleChoiceItems(types, checked, (dialog, which) -> {
+                getPreferences(MODE_PRIVATE).edit().putString("default_material_type", types[which]).apply();
+                dialog.dismiss();
+                showPage(3);
+            })
+            .setNegativeButton("取消", null)
+            .show();
+}
+
+private void toggleTheme() {
+    darkMode = !darkMode;
+    getPreferences(MODE_PRIVATE).edit().putBoolean("dark_mode", darkMode).apply();
+    buildShell();
+    showPage(currentPage);
+}
+
+private void showTextureGuide() {
+    new AlertDialog.Builder(this)
+            .setTitle("如何替换物品纹理")
+            .setMessage("① 点击“创建材质”\n\n② 选择类型“物品”\n\n③ 输入 Minecraft ID\n例如：minecraft:diamond\n\n④ 点击“选择图片”\n选择你准备好的 PNG 图片。\n\n⑤ 点击“加入编辑列表”\n\n⑥ 前往“生成”，填写材质包名称和作者。\n\n⑦ 点击“生成基岩版材质包”。\n\n生成的 .mcpack 可以直接用于 Minecraft 基岩版。")
+            .setPositiveButton("知道了", null)
+            .show();
+}
+
+private void showPackStructure() {
+    new AlertDialog.Builder(this)
+            .setTitle("材质包结构说明")
+            .setMessage("一个 Minecraft 基岩版材质包通常包含：\n\n📄 manifest.json\n材质包的基本信息和版本。\n\n📁 textures/\n存放各种纹理图片。\n\n📁 textures/items/\n物品纹理。\n\n📁 textures/blocks/\n方块纹理。\n\n📁 textures/entity/\n生物相关纹理。\n\n📁 textures/ui/\nUI 相关纹理。\n\n📁 textures/environment/\n天空等环境纹理。\n\n📁 subpacks/\n（可选）子包文件夹，每个子包可独立覆盖纹理。\n本编辑器现已支持子包导入与生成。")
+            .setPositiveButton("知道了", null)
+            .show();
+}
+
+private void showFAQ() {
+    new AlertDialog.Builder(this)
+            .setTitle("常见问题解答")
+            .setMessage("Q：需要电脑才能制作吗？\nA：不需要，本软件就是面向手机用户设计的。\n\nQ：支持哪些 Minecraft？\nA：当前目标为 Minecraft 基岩版 1.26+。\n\nQ：图片必须是什么格式？\nA：建议使用 PNG 图片。\n\nQ：为什么必须输入 namespace:id？\nA：这是 Minecraft 识别物品和方块的重要方式。\n例如：minecraft:diamond。\n\nQ：生成后怎么安装？\nA：保存 .mcpack 后，可以使用 Minecraft 打开。\n\nQ：可以修改模组里的物品吗？\nA：可以尝试输入对应模组提供的完整 ID，例如：modid:item_name。\n\nQ：会不会影响原版材质？\nA：材质包主要覆盖你制作的对应纹理，具体效果取决于 Minecraft 和资源包结构。")
+            .setPositiveButton("知道了", null)
+            .show();
+}
+
+private void showCredits() {
+    new AlertDialog.Builder(this).setTitle("制作名单")
+            .setMessage("K9T2\n项目开发 / 基岩版材质工具\n\n测试与建议\n感谢所有参与测试、反馈问题和提出功能建议的玩家\n\n特别感谢\n每一位使用、分享和支持本项目的人。")
+            .setPositiveButton("好的", null).show();
+}
+
+private void showChangelog() {
+    new AlertDialog.Builder(this).setTitle("更新日志")
+            .setMessage("1.2.0\n• 全新首页与双主题 UI\n• 增加材质包历史列表\n• 增加生成中心\n• 增加制作名单\n• 优化手机端操作体验\n\n材质生成核心功能保持不变。 ")
+            .setPositiveButton("关闭", null).show();
+}
+
+private void showAbout() {
+    new AlertDialog.Builder(this).setTitle("关于软件")
+            .setMessage("MC 基岩版材质编辑器\n版本 1.3.0-bedrock\n\n面向普通玩家的手机本地材质包制作工具。\n支持 Minecraft Bedrock 1.26+ 材质包生成。 ")
+            .setPositiveButton("关闭", null).show();
+}
+
+private void importPack() {
+    AlertDialog.Builder builder = new AlertDialog.Builder(this);
+    builder.setTitle("导入免责声明");
+    builder.setMessage("导入第三方材质包可能涉及版权问题，请确保您有权使用该材质包。\n因导入造成的任何侵权损失，与软件作者无关。\n\n点击下方「阅读完整协议」以查看完整免责声明及用户协议。");
+    builder.setPositiveButton("继续导入", (dialog, which) -> {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("application/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        startActivityForResult(intent, IMPORT_PACK);
+    });
+    builder.setNegativeButton("取消", null);
+    builder.setNeutralButton("阅读完整协议", (dialog, which) -> showFullDisclaimerDialog());
+    builder.show();
+}
+
+private void pickImage() {
+    Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+    i.setType("image/*");
+    i.addCategory(Intent.CATEGORY_OPENABLE);
+    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+    startActivityForResult(i, PICK_IMAGE);
+}
+
+@Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+    super.onActivityResult(requestCode, resultCode, data);
+    if (requestCode == PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+        selectedUri = data.getData();
+        if (selectedUri == null) return;
+        try {
+            getContentResolver().takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (Exception ignored) {}
+        try {
+            Bitmap b = BitmapFactory.decodeStream(getContentResolver().openInputStream(selectedUri));
+            if (b == null) throw new IOException("无法解析图片");
+            preview.setImageBitmap(b);
+            selectedText.setText("已选择：" + fileName(selectedUri));
+        } catch (Exception e) {
+            Toast.makeText(this, "读取失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    if (requestCode == SAVE_PACK && resultCode == RESULT_OK && data != null && pendingPack != null) {
+        Uri target = data.getData();
+        if (target == null) return;
+        try (InputStream in = new FileInputStream(pendingPack); OutputStream out = getContentResolver().openOutputStream(target)) {
+            if (out == null) throw new IOException("无法打开保存位置");
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            out.flush();
+            setStatus("材质包已保存");
+            Toast.makeText(this, "生成完成！", Toast.LENGTH_LONG).show();
+            showPage(1);
+        } catch (Exception e) {
+            Toast.makeText(this, "保存失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    if (requestCode == IMPORT_PACK && resultCode == RESULT_OK && data != null) {
+        Uri uri = data.getData();
+        if (uri != null) {
+            importMcpack(uri);
+        }
+    }
+
+    if (requestCode == EDIT_PICK_IMAGE && resultCode == RESULT_OK && data != null) {
+        Uri uri = data.getData();
+        if (uri != null) {
+            try {
+                getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            } catch (Exception ignored) {}
+            try {
+                Bitmap b = BitmapFactory.decodeStream(getContentResolver().openInputStream(uri));
+                if (b != null) {
+                    currentEditSelectedUri = uri;
+                    if (currentEditImage != null) {
+                        currentEditImage.setImageBitmap(b);
+                    }
+                } else {
+                    Toast.makeText(this, "无法读取图片", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Toast.makeText(this, "读取图片失败：" + e.getMessage(), Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
+}
+
+private void importMcpack(Uri uri) {
+    new ImportTask(uri).execute();
+}
+
+private void scanTextures(File dir, String subpack, ArrayList<Entry> out) {
+    File[] files = dir.listFiles();
+    if (files == null) return;
+    for (File f : files) {
+        if (f.isDirectory()) {
+            scanTextures(f, subpack, out);
+        } else if (f.getName().toLowerCase().endsWith(".png")) {
+            String parent = dir.getAbsolutePath();
+            String base = new File(parent).getParent();
+            if (base == null) continue;
+            String relative = f.getAbsolutePath().substring(base.length() + 1);
+            String[] parts = relative.split("/");
+            String type = "物品";
+            String id = "unknown:" + f.getName().replace(".png", "");
+            if (parts.length >= 2) {
+                String folder = parts[0];
+                String filename = parts[parts.length - 1].replace(".png", "");
+                if (folder.equals("items") || folder.equals("item")) {
+                    type = "物品";
+                    if (filename.contains("_")) {
+                        int idx = filename.lastIndexOf('_');
+                        id = filename.substring(0, idx) + ":" + filename.substring(idx + 1);
+                    } else {
+                        id = "minecraft:" + filename;
+                    }
+                } else if (folder.equals("blocks") || folder.equals("block")) {
+                    type = "方块";
+                    if (filename.contains("_")) {
+                        int idx = filename.lastIndexOf('_');
+                        id = filename.substring(0, idx) + ":" + filename.substring(idx + 1);
+                    } else {
+                        id = "minecraft:" + filename;
+                    }
+                } else if (folder.equals("entity") || folder.equals("mobs")) {
+                    type = "生物";
+                    id = "minecraft:" + filename;
+                } else if (folder.equals("environment") || folder.equals("sky")) {
+                    type = "天空";
+                    id = "minecraft:" + filename;
+                } else if (folder.equals("ui")) {
+                    type = "UI";
+                    id = "minecraft:" + filename;
+                }
+            }
+            out.add(new Entry(id, type, subpack, f.getAbsolutePath(), false, ""));
+        }
+    }
+}
+
+private void scanModels(File dir, ArrayList<Entry> out) {
+    File[] files = dir.listFiles();
+    if (files == null) return;
+    for (File f : files) {
+        if (f.isDirectory()) {
+            scanModels(f, out);
+        } else if (f.getName().toLowerCase().endsWith(".json")) {
+            try {
+                String content = new String(java.nio.file.Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8);
+                JSONObject root = new JSONObject(content);
+                JSONObject textures = root.optJSONObject("textures");
+                if (textures == null) continue;
+                String textureValue = null;
+                Iterator<String> keys = textures.keys();
+                while (keys.hasNext()) {
+                    String key = keys.next();
+                    textureValue = textures.getString(key);
+                    break;
+                }
+                if (textureValue == null || textureValue.isEmpty()) continue;
+                if (textureValue.contains(":")) {
+                    textureValue = textureValue.substring(textureValue.indexOf(":") + 1);
+                }
+                File extractRoot = dir.getParentFile().getParentFile();
+                if (extractRoot == null) extractRoot = dir.getParentFile();
+                File actualTexture = findTextureFile(extractRoot, textureValue);
+                if (actualTexture == null) continue;
+                String relativePath = f.getAbsolutePath().substring(extractRoot.getAbsolutePath().length() + 1);
+                String type = "物品";
+                if (relativePath.startsWith("models/block/")) {
+                    type = "方块";
+                } else if (relativePath.startsWith("models/item/")) {
+                    type = "物品";
+                }
+                String baseName = f.getName().replace(".json", "");
+                String id = "minecraft:" + baseName;
+                out.add(new Entry(id, type, "", actualTexture.getAbsolutePath(), false, ""));
+            } catch (Exception e) {}
+        }
+    }
+}
+
+private File findTextureFile(File root, String textureName) {
+    File candidate = new File(root, "textures/" + textureName + ".png");
+    if (candidate.exists()) return candidate;
+    File texturesDir = new File(root, "textures");
+    if (texturesDir.exists()) {
+        return findFileRecursive(texturesDir, textureName + ".png");
+    }
+    return null;
+}
+
+private File findFileRecursive(File dir, String fileName) {

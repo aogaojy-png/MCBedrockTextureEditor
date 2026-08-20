@@ -1,0 +1,377 @@
+package com.k9t2.mcpackmaker;
+
+import android.app.AlertDialog;
+import android.app.Dialog;
+import android.app.ProgressDialog;
+import android.content.*;
+import android.graphics.*;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.provider.OpenableColumns;
+import android.view.*;
+import android.widget.*;
+import android.widget.AdapterView;
+
+import org.json.*;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.*;
+import java.util.zip.*;
+
+public class MainActivity extends android.app.Activity {
+    private static final int PICK_IMAGE = 1001;
+    private static final int SAVE_PACK = 1002;
+    private static final int IMPORT_PACK = 2001;
+    private static final int EDIT_PICK_IMAGE = 3001;
+
+    private LinearLayout pageHost;
+    private LinearLayout bottomNav;
+    private int currentPage = 0;
+    private boolean darkMode;
+
+    private Spinner typeSpinner;
+    private EditText idInput;
+    private ImageView preview;
+    private TextView selectedText, status;
+    private LinearLayout editorListContainer;
+    private Uri selectedUri;
+    private File pendingPack;
+    private String pendingHistoryName = "";
+    private EditText packNameInput, authorInput, descriptionInput;
+    private ArrayList<Entry> entries = new ArrayList<>();
+    private ArrayList<String> subpackList = new ArrayList<>();
+
+    private Project currentProject;
+
+    private Dialog currentEditDialog;
+    private ImageView currentEditImage;
+    private Uri currentEditSelectedUri;
+
+    private Spinner subpackSpinner;
+    private ArrayAdapter<String> subpackAdapter;
+
+    private CheckBox independentCheckBox;
+    private EditText switchNameInput;
+
+    // 筛选器
+    private Spinner filterSubpackSpinner;
+    private Spinner filterSwitchSpinner;
+    private String currentSubpackFilter = "";
+    private String currentSwitchFilter = "";
+
+    // 粘性筛选器
+    private Spinner stickySubpackSpinner;
+    private Spinner stickySwitchSpinner;
+
+    private static final int GREEN = Color.rgb(52, 190, 73);
+    private static final int BLUE = Color.rgb(66, 139, 224);
+    private static final int PURPLE = Color.rgb(157, 104, 226);
+
+    // ---------- 内部类 ----------
+    private static class Entry {
+        String id, type, subpack;
+        String imagePath;
+        boolean independentEnabled;
+        String switchName;
+        Entry(String id, String type, String subpack, String imagePath,
+              boolean independentEnabled, String switchName) {
+            this.id = id;
+            this.type = type;
+            this.subpack = subpack == null ? "" : subpack;
+            this.imagePath = imagePath;
+            this.independentEnabled = independentEnabled;
+            this.switchName = switchName == null ? "" : switchName;
+        }
+    }
+
+    private static class Project {
+        String id;
+        String name;
+        String author;
+        String description;
+        String date;
+        ArrayList<Entry> entries = new ArrayList<>();
+    }
+
+    // ---------- 异步导入任务 ----------
+    private class ImportTask extends AsyncTask<Void, Integer, ArrayList<Entry>> {
+        private Uri uri;
+        private ProgressDialog progressDialog;
+        private Exception error;
+
+        ImportTask(Uri uri) { this.uri = uri; }
+
+        @Override
+        protected void onPreExecute() {
+            progressDialog = new ProgressDialog(MainActivity.this);
+            progressDialog.setTitle("正在导入材质包");
+            progressDialog.setMessage("正在解析文件结构...");
+            progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+            progressDialog.setMax(100);
+            progressDialog.setCancelable(false);
+            progressDialog.show();
+        }
+
+        @Override
+        protected ArrayList<Entry> doInBackground(Void... voids) {
+            try {
+                File tempZip = new File(getCacheDir(), "import_temp.zip");
+                try (InputStream in = getContentResolver().openInputStream(uri);
+                     OutputStream out = new FileOutputStream(tempZip)) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    long total = 0;
+                    while ((n = in.read(buf)) != -1) {
+                        out.write(buf, 0, n);
+                        total += n;
+                        publishProgress((int) (total / 1024 / 1024 % 30));
+                    }
+                }
+
+                File extractDir = new File(getCacheDir(), "import_extract");
+                delete(extractDir);
+                extractDir.mkdirs();
+                unzip(tempZip, extractDir);
+                publishProgress(40);
+
+                ArrayList<Entry> imported = new ArrayList<>();
+
+                File texturesDir = new File(extractDir, "textures");
+                if (texturesDir.exists()) {
+                    scanTextures(texturesDir, "", imported);
+                }
+                publishProgress(60);
+
+                File subpacksDir = new File(extractDir, "subpacks");
+                if (subpacksDir.exists()) {
+                    File[] subFolders = subpacksDir.listFiles(File::isDirectory);
+                    if (subFolders != null) {
+                        int totalSub = subFolders.length;
+                        int processed = 0;
+                        for (File subFolder : subFolders) {
+                            String subName = subFolder.getName();
+                            if (!subpackList.contains(subName)) {
+                                subpackList.add(subName);
+                            }
+                            File subTextures = new File(subFolder, "textures");
+                            if (subTextures.exists()) {
+                                scanTextures(subTextures, subName, imported);
+                            }
+                            processed++;
+                            publishProgress(60 + (int) ((float) processed / totalSub * 20));
+                        }
+                        saveSubpackList();
+                    }
+                }
+                publishProgress(85);
+
+                File modelsDir = new File(extractDir, "models");
+                if (modelsDir.exists()) {
+                    scanModels(modelsDir, imported);
+                }
+                publishProgress(95);
+
+                return imported;
+            } catch (Exception e) {
+                error = e;
+                return null;
+            }
+        }
+
+        @Override
+        protected void onProgressUpdate(Integer... values) {
+            progressDialog.setProgress(values[0]);
+            if (values[0] < 30) progressDialog.setMessage("正在解压材质包...");
+            else if (values[0] < 60) progressDialog.setMessage("正在扫描纹理文件...");
+            else if (values[0] < 85) progressDialog.setMessage("正在扫描子包...");
+            else if (values[0] < 95) progressDialog.setMessage("正在解析模型...");
+            else progressDialog.setMessage("正在整理...");
+        }
+
+        @Override
+        protected void onPostExecute(ArrayList<Entry> result) {
+            progressDialog.dismiss();
+            if (error != null) {
+                Toast.makeText(MainActivity.this, "导入失败：" + error.getMessage(), Toast.LENGTH_LONG).show();
+                return;
+            }
+            if (result == null || result.isEmpty()) {
+                Toast.makeText(MainActivity.this, "未在材质包中找到可导入的纹理", Toast.LENGTH_LONG).show();
+                return;
+            }
+            entries.clear();
+            entries.addAll(result);
+            currentProject = null;
+            showPage(4);
+            Toast.makeText(MainActivity.this, "导入成功，共 " + result.size() + " 个材质", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override protected void onCreate(Bundle b) {
+        super.onCreate(b);
+        darkMode = getPreferences(MODE_PRIVATE).getBoolean("dark_mode", true);
+        loadSubpackList();
+        if (!getPreferences(MODE_PRIVATE).getBoolean("agreed", false)) {
+            showAgreementDialog();
+        } else {
+            buildShell();
+            showPage(0);
+        }
+    }private void buildShell() {
+    LinearLayout root = new LinearLayout(this);
+    root.setOrientation(LinearLayout.VERTICAL);
+    root.setBackgroundColor(bg());
+    root.setClipToPadding(false);
+
+    FrameLayout contentFrame = new FrameLayout(this);
+    pageHost = new LinearLayout(this);
+    pageHost.setOrientation(LinearLayout.VERTICAL);
+    pageHost.setBackgroundColor(bg());
+    contentFrame.addView(pageHost, new FrameLayout.LayoutParams(-1, -1));
+    root.addView(contentFrame, new LinearLayout.LayoutParams(-1, 0, 1));
+
+    bottomNav = new LinearLayout(this);
+    bottomNav.setOrientation(LinearLayout.HORIZONTAL);
+    bottomNav.setGravity(Gravity.CENTER);
+    bottomNav.setPadding(dp(10), dp(8), dp(10), dp(8));
+    bottomNav.setBackground(round(card(), 22, line(), 1));
+
+    LinearLayout.LayoutParams navLp = new LinearLayout.LayoutParams(-1, dp(78));
+    navLp.leftMargin = dp(10);
+    navLp.rightMargin = dp(10);
+    navLp.bottomMargin = dp(8);
+    root.addView(bottomNav, navLp);
+
+    setContentView(root);
+    root.setOnApplyWindowInsetsListener((v, insets) -> {
+        int top, bottom;
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            android.graphics.Insets i = insets.getInsets(WindowInsets.Type.systemBars());
+            top = i.top; bottom = i.bottom;
+        } else {
+            top = insets.getSystemWindowInsetTop(); bottom = insets.getSystemWindowInsetBottom();
+        }
+        v.setPadding(0, top, 0, bottom);
+        return insets;
+    });
+    refreshBottomNav();
+    styleWindow();
+}
+
+private void styleWindow() {
+    getWindow().setStatusBarColor(bg());
+    getWindow().setNavigationBarColor(bg());
+    int flags = 0;
+    if (!darkMode) flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+    getWindow().getDecorView().setSystemUiVisibility(flags);
+}
+
+private int bg() { return darkMode ? Color.rgb(17, 21, 27) : Color.rgb(247, 249, 252); }
+private int card() { return darkMode ? Color.rgb(29, 34, 42) : Color.WHITE; }
+private int card2() { return darkMode ? Color.rgb(35, 40, 49) : Color.rgb(246, 248, 251); }
+private int text() { return darkMode ? Color.WHITE : Color.rgb(25, 29, 35); }
+private int sub() { return darkMode ? Color.rgb(200, 200, 200) : Color.rgb(100, 108, 120); }
+private int line() { return darkMode ? Color.rgb(53, 60, 70) : Color.rgb(228, 232, 239); }
+
+private void loadSubpackList() {
+    String raw = getPreferences(MODE_PRIVATE).getString("subpack_list", "");
+    subpackList.clear();
+    if (!raw.isEmpty()) {
+        try {
+            JSONArray arr = new JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                subpackList.add(arr.getString(i));
+            }
+        } catch (Exception ignored) {}
+    }
+}
+
+private void saveSubpackList() {
+    JSONArray arr = new JSONArray();
+    for (String s : subpackList) arr.put(s);
+    getPreferences(MODE_PRIVATE).edit().putString("subpack_list", arr.toString()).apply();
+    refreshSubpackSpinner();
+    updateFilterOptions();
+}
+
+private void refreshSubpackSpinner() {
+    if (subpackSpinner != null && subpackAdapter != null) {
+        subpackAdapter.notifyDataSetChanged();
+        String selected = (String) subpackSpinner.getSelectedItem();
+        if (selected != null && !subpackList.contains(selected) && !selected.equals("默认/根包")) {
+            subpackSpinner.setSelection(0);
+        }
+    }
+}
+
+private int dp(int n) { return Math.round(n * getResources().getDisplayMetrics().density); }
+private float dpF(float n) { return n * getResources().getDisplayMetrics().density; }
+private int blend(int a, int b, float amount) { return Color.rgb((int)(Color.red(a)*(1-amount)+Color.red(b)*amount),(int)(Color.green(a)*(1-amount)+Color.green(b)*amount),(int)(Color.blue(a)*(1-amount)+Color.blue(b)*amount)); }
+private GradientDrawable round(int color, float radius, int strokeColor, int strokeWidth) { GradientDrawable g = new GradientDrawable(); g.setColor(color); g.setCornerRadius(dpF(radius)); if (strokeWidth>0) g.setStroke(dp(strokeWidth), strokeColor); return g; }
+private LinearLayout column() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL); return l; }
+private LinearLayout row() { LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.HORIZONTAL); return l; }
+private LinearLayout cardColumn() { LinearLayout l = column(); l.setPadding(dp(14), dp(14), dp(14), dp(14)); l.setBackground(round(card(), 19, line(), 1)); return l; }
+private TextView tv(String s, float size, int color, boolean bold) { TextView t = new TextView(this); t.setText(s); t.setTextSize(size); t.setTextColor(color); t.setTypeface(android.graphics.Typeface.DEFAULT, bold ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL); return t; }
+private LinearLayout.LayoutParams marginTop(int v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.topMargin=v; return p; }
+private LinearLayout.LayoutParams marginBottom(int v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.bottomMargin=v; return p; }
+private LinearLayout.LayoutParams marginLeft(int v) { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-2,-2); p.leftMargin=v; return p; }
+private LinearLayout.LayoutParams centerParams() { LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(-1,-2); p.gravity=Gravity.CENTER_HORIZONTAL; return p; }
+private LinearLayout.LayoutParams centerMarginParams(int top) { LinearLayout.LayoutParams p=centerParams(); p.topMargin=top; return p; }
+private View space(int h) { Space s=new Space(this); return sized(s,-1,h); }
+private <T extends View> T sized(T v,int w,int h){v.setLayoutParams(new LinearLayout.LayoutParams(w,h)); return v;}
+private ScrollView scroll() { ScrollView s = new ScrollView(this); s.setFillViewport(true); s.setBackgroundColor(bg()); return s; }
+private TextView primaryButton(String s) { TextView t = tv(s, 15, Color.WHITE, true); t.setGravity(Gravity.CENTER); t.setBackground(round(GREEN, 17, Color.TRANSPARENT, 0)); return t; }
+private TextView secondaryButton(String s) { TextView t = tv(s, 14, text(), true); t.setGravity(Gravity.CENTER); t.setBackground(round(card2(), 15, line(), 1)); return t; }
+private EditText input(String hint, String subHint) {
+    EditText e = new EditText(this);
+    e.setSingleLine(true);
+    e.setTextSize(14);
+    e.setTextColor(text());
+    e.setHintTextColor(sub());
+    e.setHint(hint + "  ·  " + subHint);
+    e.setPadding(dp(15), 0, dp(15), 0);
+    e.setBackground(round(card2(), 15, line(), 1));
+    return e;
+}
+
+private ArrayAdapter<String> createSpinnerAdapter(String[] items) {
+    return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, items) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View view = super.getView(position, convertView, parent);
+            if (view instanceof TextView) ((TextView) view).setTextColor(text());
+            return view;
+        }
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            View view = super.getDropDownView(position, convertView, parent);
+            if (view instanceof TextView) {
+                ((TextView) view).setTextColor(text());
+                view.setBackgroundColor(Color.TRANSPARENT);
+            }
+            return view;
+        }
+    };
+}
+
+private ArrayAdapter<String> createSpinnerAdapter(List<String> items) {
+    return new ArrayAdapter<String>(this, android.R.layout.simple_spinner_dropdown_item, items) {
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View view = super.getView(position, convertView, parent);
+            if (view instanceof TextView) ((TextView) view).setTextColor(text());
+            return view;
+        }
+        @Override
+        public View getDropDownView(int position, View convertView, ViewGroup parent) {
+            View view = super.getDropDownView(position, convertView, parent);
+            if (view instanceof TextView) {
+                ((TextView) view).setTextColor(text());
+                view.setBackgroundColor(Color.TRANSPARENT);
+            }
+            return view;
+        }

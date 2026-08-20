@@ -1,0 +1,19 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.k9t2.mcpackmaker.app-mergeDebugResources-27:/values-zh/values-zh.xml",
+            "map": [
+                {
+                    "source": "/data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/e4b16dea68a2837c56407021c7cb0868/transformed/ucrop-2.2.8/res/values-zh/values-zh.xml",
+                    "from": {
+                        "startLines": "2,3,4,5,6,7",
+                        "startColumns": "4,4,4,4,4,4",
+                        "startOffsets": "55,97,151,205,252,296",
+                        "endColumns": "41,53,53,46,43,42",
+                        "endOffsets": "92,146,200,247,291,334"
+                    }
+                }
+            ]
+        }
+    ]
+}

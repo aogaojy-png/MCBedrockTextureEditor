@@ -10,7 +10,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://jitpack.io' }   // 添加 JitPack
     }
 }
 rootProject.name = "MC材质编辑器"
-include(":app")
+include ':app'

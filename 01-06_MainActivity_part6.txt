@@ -1,0 +1,378 @@
+            j.append("    \"").append(json(x.getKey())).append("\":{\"textures\":\"").append(x.getValue()).append("\"}");
+        }
+        j.append("\n  }\n}\n");
+        write(f, j.toString());
+    }
+
+    private void writeTerrainTextureJson(File f, Map<String, String> map) throws Exception {
+        StringBuilder j = new StringBuilder();
+        j.append("{\n  \"resource_pack_name\":\"MC 基岩版材质编辑器\",\n  \"texture_name\":\"atlas.terrain\",\n  \"texture_data\":{\n");
+        int i = 0;
+        for (Map.Entry<String, String> x : map.entrySet()) {
+            if (i++ > 0) j.append(",\n");
+            j.append("    \"").append(json(x.getKey())).append("\":{\"textures\":[\"").append(x.getValue()).append("\"]}");
+        }
+        j.append("\n  }\n}\n");
+        write(f, j.toString());
+    }
+
+    private void copyAsPng(File srcFile, File out) throws Exception {
+        if (!srcFile.exists()) throw new IOException("图片文件不存在");
+        Bitmap b = BitmapFactory.decodeFile(srcFile.getAbsolutePath());
+        if (b == null) throw new IOException("图片无法解码");
+        File p = out.getParentFile();
+        if (p != null) p.mkdirs();
+        try (FileOutputStream fos = new FileOutputStream(out)) {
+            if (!b.compress(Bitmap.CompressFormat.PNG, 100, fos)) throw new IOException("PNG 编码失败");
+        }
+    }
+
+    private boolean validId(String id) {
+        if (id == null || id.isEmpty()) return false;
+        String[] p = id.split(":", -1);
+        return p.length == 2 && p[0].matches("[a-z0-9_.-]+") && p[1].matches("[a-z0-9_./-]+");
+    }
+
+    private String safe(String s) {
+        return s.replace(":", "_").replaceAll("[^a-zA-Z0-9_.-]", "_");
+    }
+
+    private String json(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+
+    private String fileName(Uri uri) {
+        try (android.database.Cursor c = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {}
+        return uri.toString();
+    }
+
+    private void write(File f, String s) throws Exception {
+        File p = f.getParentFile();
+        if (p != null) p.mkdirs();
+        try (FileOutputStream o = new FileOutputStream(f)) {
+            o.write(s.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private void zip(File dir, File out) throws Exception {
+        zip(dir, out, null);
+    }
+
+    private void zip(File dir, File out, BuildProgressListener progress) throws Exception {
+        int totalFiles = countFiles(dir);
+        int[] done = {0};
+        try (ZipOutputStream z = new ZipOutputStream(new BufferedOutputStream(new FileOutputStream(out)))) {
+            zipRec(dir, dir, z, totalFiles, done, progress);
+        }
+    }
+
+    private int countFiles(File f) {
+        if (f == null) return 0;
+        if (f.isFile()) return 1;
+        File[] list = f.listFiles();
+        if (list == null) return 0;
+        int count = 0;
+        for (File x : list) count += countFiles(x);
+        return count;
+    }
+
+    private void zipRec(File root, File f, ZipOutputStream z, int totalFiles,
+                         int[] done, BuildProgressListener progress) throws Exception {
+        File[] list = f.listFiles();
+        if (list == null) return;
+        for (File x : list) {
+            String name = root.toURI().relativize(x.toURI()).getPath();
+            if (x.isDirectory()) {
+                zipRec(root, x, z, totalFiles, done, progress);
+            } else {
+                z.putNextEntry(new ZipEntry(name));
+                try (InputStream in = new BufferedInputStream(new FileInputStream(x))) {
+                    byte[] b = new byte[8192];
+                    int n;
+                    while ((n = in.read(b)) != -1) z.write(b, 0, n);
+                }
+                z.closeEntry();
+
+                done[0]++;
+                if (progress != null) {
+                    int p = totalFiles <= 0 ? 100 : (int)((done[0] / (float) totalFiles) * 100f);
+                    progress.update(p, "正在压缩文件 " + done[0] + "/" + totalFiles);
+                }
+            }
+        }
+    }
+
+    private void delete(File f) {
+        if (!f.exists()) return;
+        File[] list = f.listFiles();
+        if (list != null) for (File x : list) delete(x);
+        f.delete();
+    }
+
+    private void setupFilterSpinner(Spinner spinner, Runnable onSelect) {
+        spinner.setAdapter(createSpinnerAdapter(new ArrayList<>()));
+        setupSpinnerPopup(spinner);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (onSelect != null) onSelect.run();
+            }
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {}
+        });
+    }
+
+    private void updateFilterOptions() {
+        if (filterSubpackSpinner != null) {
+            List<String> subpackOptions = new ArrayList<>();
+            subpackOptions.add("全部");
+            subpackOptions.addAll(subpackList);
+            filterSubpackSpinner.setAdapter(createSpinnerAdapter(subpackOptions));
+            int pos = subpackOptions.indexOf(currentSubpackFilter.isEmpty() ? "全部" : currentSubpackFilter);
+            if (pos < 0) pos = 0;
+            filterSubpackSpinner.setSelection(pos);
+        }
+
+        if (filterSwitchSpinner != null) {
+            Set<String> switchSet = new HashSet<>();
+            for (Entry e : entries) {
+                if (!e.switchName.isEmpty()) switchSet.add(e.switchName);
+            }
+            List<String> switchOptions = new ArrayList<>();
+            switchOptions.add("全部");
+            switchOptions.addAll(switchSet);
+            filterSwitchSpinner.setAdapter(createSpinnerAdapter(switchOptions));
+            int pos = switchOptions.indexOf(currentSwitchFilter.isEmpty() ? "全部" : currentSwitchFilter);
+            if (pos < 0) pos = 0;
+            filterSwitchSpinner.setSelection(pos);
+        }
+
+        if (stickySubpackSpinner != null) {
+            List<String> subpackOptions = new ArrayList<>();
+            subpackOptions.add("全部");
+            subpackOptions.addAll(subpackList);
+            stickySubpackSpinner.setAdapter(createSpinnerAdapter(subpackOptions));
+            int pos = subpackOptions.indexOf(currentSubpackFilter.isEmpty() ? "全部" : currentSubpackFilter);
+            if (pos < 0) pos = 0;
+            stickySubpackSpinner.setSelection(pos);
+        }
+
+        if (stickySwitchSpinner != null) {
+            Set<String> switchSet = new HashSet<>();
+            for (Entry e : entries) {
+                if (!e.switchName.isEmpty()) switchSet.add(e.switchName);
+            }
+            List<String> switchOptions = new ArrayList<>();
+            switchOptions.add("全部");
+            switchOptions.addAll(switchSet);
+            stickySwitchSpinner.setAdapter(createSpinnerAdapter(switchOptions));
+            int pos = switchOptions.indexOf(currentSwitchFilter.isEmpty() ? "全部" : currentSwitchFilter);
+            if (pos < 0) pos = 0;
+            stickySwitchSpinner.setSelection(pos);
+        }
+    }
+
+    private ArrayList<Project> loadAllProjects() {
+        ArrayList<Project> list = new ArrayList<>();
+        String raw = getPreferences(MODE_PRIVATE).getString("projects", "");
+        if (raw.isEmpty()) return list;
+        try {
+            JSONArray arr = new JSONArray(raw);
+            for (int i = 0; i < arr.length(); i++) {
+                JSONObject obj = arr.getJSONObject(i);
+                Project p = new Project();
+                p.id = obj.optString("id");
+                p.name = obj.optString("name");
+                p.author = obj.optString("author");
+                p.description = obj.optString("description");
+                p.date = obj.optString("date");
+                JSONArray entriesArr = obj.optJSONArray("entries");
+                if (entriesArr != null) {
+                    for (int j = 0; j < entriesArr.length(); j++) {
+                        JSONObject eObj = entriesArr.getJSONObject(j);
+                        Entry e = new Entry(
+                                eObj.optString("id"),
+                                eObj.optString("type"),
+                                eObj.optString("subpack"),
+                                eObj.optString("imagePath"),
+                                eObj.optBoolean("independentEnabled", false),
+                                eObj.optString("switchName")
+                        );
+                        p.entries.add(e);
+                    }
+                }
+                list.add(p);
+            }
+        } catch (Exception ignored) {}
+        Collections.sort(list, (a, b) -> b.date.compareTo(a.date));
+        return list;
+    }
+
+    private void saveProject() {
+        if (entries.isEmpty() && currentProject == null) return;
+        Project p = new Project();
+        p.id = currentProject != null ? currentProject.id : UUID.randomUUID().toString();
+        p.name = packNameInput != null ? packNameInput.getText().toString().trim() : (currentProject != null ? currentProject.name : "未命名");
+        if (p.name.isEmpty()) p.name = "未命名";
+        p.author = authorInput != null ? authorInput.getText().toString().trim() : (currentProject != null ? currentProject.author : "熬糕aogao");
+        if (p.author.isEmpty()) p.author = "熬糕aogao";
+        p.description = descriptionInput != null ? descriptionInput.getText().toString().trim() : (currentProject != null ? currentProject.description : "");
+        p.date = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(new Date());
+
+        File projectDir = new File(getFilesDir(), "projects/" + p.id);
+        File imagesDir = new File(projectDir, "images");
+        if (!imagesDir.exists()) imagesDir.mkdirs();
+        ArrayList<Entry> newEntries = new ArrayList<>();
+        for (Entry e : entries) {
+            String newPath = e.imagePath;
+            if (e.imagePath != null && !e.imagePath.isEmpty() && !e.imagePath.startsWith(imagesDir.getAbsolutePath())) {
+                try {
+                    File src = new File(e.imagePath);
+                    if (src.exists()) {
+                        File dest = new File(imagesDir, System.currentTimeMillis() + "_" + new File(e.imagePath).getName());
+                        copyFile(src, dest);
+                        newPath = dest.getAbsolutePath();
+                    }
+                } catch (Exception ex) {}
+            }
+            newEntries.add(new Entry(e.id, e.type, e.subpack, newPath, e.independentEnabled, e.switchName));
+        }
+        p.entries = newEntries;
+
+        ArrayList<Project> all = loadAllProjects();
+        boolean found = false;
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).id.equals(p.id)) {
+                all.set(i, p);
+                found = true;
+                break;
+            }
+        }
+        if (!found) all.add(0, p);
+        while (all.size() > 20) all.remove(all.size() - 1);
+
+        JSONArray arr = new JSONArray();
+        for (Project proj : all) {
+            JSONObject obj = new JSONObject();
+            try {
+                obj.put("id", proj.id);
+                obj.put("name", proj.name);
+                obj.put("author", proj.author);
+                obj.put("description", proj.description);
+                obj.put("date", proj.date);
+                JSONArray entriesArr = new JSONArray();
+                for (Entry e : proj.entries) {
+                    JSONObject eObj = new JSONObject();
+                    eObj.put("id", e.id);
+                    eObj.put("type", e.type);
+                    eObj.put("subpack", e.subpack);
+                    eObj.put("imagePath", e.imagePath);
+                    eObj.put("independentEnabled", e.independentEnabled);
+                    eObj.put("switchName", e.switchName);
+                    entriesArr.put(eObj);
+                }
+                obj.put("entries", entriesArr);
+                arr.put(obj);
+            } catch (Exception ignored) {}
+        }
+        getPreferences(MODE_PRIVATE).edit().putString("projects", arr.toString()).apply();
+    }
+
+    private void copyFile(File src, File dest) throws IOException {
+        try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dest)) {
+            byte[] buf = new byte[8192];
+            int n;
+            while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+        }
+    }
+
+    private String getFullDisclaimerText() {
+        return "━━━ 免责声明及用户协议 ━━━\n\n" +
+               "1. 本工具的性质\n" +
+               "MC基岩版材质编辑器是一款本地文件编辑工具，用于帮助玩家创建和修改Minecraft基岩版资源包。\n" +
+               "本工具不包含任何Minecraft官方游戏资产（如纹理、模型、音效等），所有生成的内容均由用户自行提供。\n\n" +
+               "2. 版权与使用许可\n" +
+               "您使用本工具导入、编辑、生成的任何材质包，其版权归内容创作者所有。\n" +
+               "您应确保您拥有所使用素材的合法使用权，并遵守《Minecraft最终用户许可协议》(EULA) 及所有适用法律法规。\n\n" +
+               "3. 用户责任\n" +
+               "您在使用本工具时，需自行承担以下责任：\n" +
+               "• 确保您导入的图片、纹理、模型等素材不侵犯任何第三方的版权、商标权或其他合法权益。\n" +
+               "• 不得将本工具用于任何商业盈利活动（如销售材质包、付费分发等），除非您已获得所有必要的授权。\n" +
+               "• 使用本工具生成的材质包仅限个人非商业用途，如需分发，请遵守Mojang的EULA。\n\n" +
+               "4. 免责声明\n" +
+               "本工具按“现状”提供，开发者不对因使用本工具而产生的任何直接或间接损失承担责任。\n" +
+               "因用户导入、编辑、分发第三方素材而引发的任何法律纠纷，均与开发者无关。\n\n" +
+               "5. 协议变更\n" +
+               "开发者保留随时更新本协议的权利，更新后的协议将在软件更新时公布。继续使用即视为接受。\n\n" +
+               "如有疑问，请联系：熬糕aogao (邮箱/社交平台)";
+    }
+
+    private void showFullDisclaimerDialog() {
+        new AlertDialog.Builder(this)
+                .setTitle("免责声明及用户协议")
+                .setMessage(getFullDisclaimerText())
+                .setPositiveButton("关闭", null)
+                .show();
+    }
+
+    private void showAgreementDialog() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("用户协议及免责声明");
+        builder.setCancelable(false);
+
+        ScrollView scrollView = new ScrollView(this);
+        TextView textView = new TextView(this);
+        textView.setText(getFullDisclaimerText());
+        textView.setTextColor(text());
+        textView.setBackgroundColor(card());
+        textView.setPadding(dp(16), dp(16), dp(16), dp(16));
+        scrollView.addView(textView);
+
+        CheckBox checkBox = new CheckBox(this);
+        checkBox.setText("我已阅读并同意以上条款");
+        checkBox.setTextColor(text());
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.addView(scrollView, new LinearLayout.LayoutParams(-1, 0, 1));
+        layout.addView(checkBox, new LinearLayout.LayoutParams(-1, dp(50)));
+
+        builder.setView(layout);
+        builder.setPositiveButton("同意", null);
+        builder.setNegativeButton("不同意", null);
+
+        AlertDialog dialog = builder.create();
+        dialog.show();
+
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setBackgroundDrawable(round(card(), 24, line(), 1));
+        }
+
+        Button positive = dialog.getButton(AlertDialog.BUTTON_POSITIVE);
+        Button negative = dialog.getButton(AlertDialog.BUTTON_NEGATIVE);
+
+        positive.setOnClickListener(v -> {
+            if (checkBox.isChecked()) {
+                getPreferences(MODE_PRIVATE).edit().putBoolean("agreed", true).apply();
+                dialog.dismiss();
+                buildShell();
+                showPage(0);
+            } else {
+                Toast.makeText(this, "请先勾选“我已阅读并同意”", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        negative.setOnClickListener(v -> {
+            finish();
+        });
+
+        dialog.setOnCancelListener(d -> finish());
+    }
+}

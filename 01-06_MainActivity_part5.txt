@@ -1,0 +1,378 @@
+    File[] files = dir.listFiles();
+    if (files == null) return null;
+    for (File f : files) {
+        if (f.isDirectory()) {
+            File result = findFileRecursive(f, fileName);
+            if (result != null) return result;
+        } else if (f.getName().equals(fileName)) {
+            return f;
+        }
+    }
+    return null;
+}
+
+private void unzip(File zipFile, File destDir) throws IOException {
+    try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(new FileInputStream(zipFile)))) {
+        ZipEntry entry;
+        while ((entry = zis.getNextEntry()) != null) {
+            File outFile = new File(destDir, entry.getName());
+            if (entry.isDirectory()) {
+                outFile.mkdirs();
+            } else {
+                File parent = outFile.getParentFile();
+                if (parent != null) parent.mkdirs();
+                try (OutputStream os = new BufferedOutputStream(new FileOutputStream(outFile))) {
+                    byte[] buf = new byte[8192];
+                    int n;
+                    while ((n = zis.read(buf)) != -1) os.write(buf, 0, n);
+                }
+            }
+            zis.closeEntry();
+        }
+    }
+}    private void addEntry() {
+        String id = idInput.getText().toString().trim();
+        String type = typeSpinner.getSelectedItem().toString();
+        if (!validId(id)) {
+            Toast.makeText(this, "ID 格式错误，需要 namespace:id", Toast.LENGTH_LONG).show();
+            return;
+        }
+        if (selectedUri == null) {
+            Toast.makeText(this, "请先选择图片", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String imagePath = copyImageToProject(selectedUri);
+        if (imagePath == null) {
+            Toast.makeText(this, "图片复制失败", Toast.LENGTH_LONG).show();
+            return;
+        }
+        String selectedSub = (String) subpackSpinner.getSelectedItem();
+        String subpack = selectedSub.equals("默认/根包") ? "" : selectedSub;
+
+        boolean independent = independentCheckBox.isChecked();
+        String switchName = independent ? switchNameInput.getText().toString().trim() : "";
+        if (independent && switchName.isEmpty()) {
+            Toast.makeText(this, "请输入开关名称", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        for (Entry e : entries) {
+            if (e.id.equals(id) && e.type.equals(type) && e.subpack.equals(subpack)) {
+                Toast.makeText(this, "该项目已存在（相同ID、类型和子包）", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+        entries.add(new Entry(id, type, subpack, imagePath, independent, switchName));
+        refreshEditorList();
+        updateFilterOptions();
+        setStatus("已加入：" + id + (subpack.isEmpty() ? "" : " (子包:" + subpack + ")") +
+                (independent ? " [开关:" + switchName + "]" : ""));
+        idInput.setText("");
+        selectedUri = null;
+        preview.setImageDrawable(null);
+        selectedText.setText("尚未选择图片");
+        independentCheckBox.setChecked(false);
+        switchNameInput.setVisibility(View.GONE);
+        switchNameInput.setText("");
+    }
+
+    private String copyImageToProject(Uri uri) {
+        try {
+            File imagesDir = new File(getFilesDir(), "temp_images");
+            if (!imagesDir.exists()) imagesDir.mkdirs();
+            String filename = System.currentTimeMillis() + "_" + fileName(uri);
+            File dest = new File(imagesDir, filename);
+            try (InputStream in = getContentResolver().openInputStream(uri);
+                 OutputStream out = new FileOutputStream(dest)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) out.write(buf, 0, n);
+            }
+            return dest.getAbsolutePath();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private void setStatus(String s) { if (status != null) status.setText(s); }
+
+    private interface BuildProgressListener {
+        void update(int progress, String message);
+    }
+
+    private void generate() {
+        if (entries.isEmpty()) {
+            Toast.makeText(this, "请先在编辑器加入至少一个项目", Toast.LENGTH_LONG).show();
+            showPage(4);
+            return;
+        }
+
+        final String name;
+        final String author;
+        final String description;
+        try {
+            String n = (packNameInput == null ? "" : packNameInput.getText().toString().trim());
+            if (n.isEmpty()) n = "我的基岩材质";
+            if (!n.toLowerCase(Locale.ROOT).endsWith(".mcpack")) n += ".mcpack";
+            name = n;
+
+            String a = authorInput == null ? "熬糕aogao" : authorInput.getText().toString().trim();
+            author = a.isEmpty() ? "熬糕aogao" : a;
+
+            String d = descriptionInput == null ? "个人制作的 Minecraft 基岩版材质包" : descriptionInput.getText().toString().trim();
+            description = d.isEmpty() ? "个人制作的 Minecraft 基岩版材质包" : d;
+        } catch (Exception e) {
+            Toast.makeText(this, "读取生成设置失败：" + e.getMessage(), Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        final ProgressDialog progressDialog = new ProgressDialog(this);
+        progressDialog.setTitle("正在生成材质包");
+        progressDialog.setMessage("准备生成...");
+        progressDialog.setProgressStyle(ProgressDialog.STYLE_HORIZONTAL);
+        progressDialog.setMax(100);
+        progressDialog.setProgress(0);
+        progressDialog.setCancelable(false);
+        progressDialog.setIndeterminate(false);
+        progressDialog.show();
+
+        new AsyncTask<Void, Integer, Exception>() {
+            @Override
+            protected Exception doInBackground(Void... ignored) {
+                try {
+                    File work = new File(getCacheDir(), "mcpack_build");
+                    delete(work);
+                    if (!work.mkdirs()) throw new IOException("无法创建工作目录");
+
+                    publishProgress(2);
+                    buildBedrock(work, author, description, (progress, msg) -> publishProgress(progress));
+
+                    pendingPack = new File(getCacheDir(), name);
+                    if (pendingPack.exists() && !pendingPack.delete()) {
+                        throw new IOException("无法覆盖旧的材质包");
+                    }
+
+                    publishProgress(70);
+                    zip(work, pendingPack, (progress, msg) -> publishProgress(70 + (int)(progress * 0.30f)));
+                    publishProgress(100);
+
+                    pendingHistoryName = name.substring(0, name.length() - ".mcpack".length());
+                    return null;
+                } catch (Exception e) {
+                    return e;
+                }
+            }
+
+            @Override
+            protected void onProgressUpdate(Integer... values) {
+                if (values == null || values.length == 0) return;
+                int p = Math.max(0, Math.min(100, values[0]));
+                progressDialog.setProgress(p);
+                String message;
+                if (p < 5) message = "准备工作目录";
+                else if (p < 60) message = "正在处理纹理";
+                else if (p < 70) message = "材质文件准备完成";
+                else if (p < 100) message = "正在压缩材质包";
+                else message = "生成完成";
+                progressDialog.setMessage(message + "  " + p + "%");
+            }
+
+            @Override
+            protected void onPostExecute(Exception error) {
+                progressDialog.dismiss();
+                if (error != null) {
+                    Toast.makeText(MainActivity.this, "生成失败：" + error.getMessage(), Toast.LENGTH_LONG).show();
+                    setStatus("生成失败");
+                    return;
+                }
+
+                saveProject();
+
+                Intent save = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                save.setType("application/octet-stream");
+                save.putExtra(Intent.EXTRA_TITLE, name);
+                startActivityForResult(save, SAVE_PACK);
+                setStatus("材质包生成完成");
+            }
+        }.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
+    }
+
+    private void buildBedrock(File root, String author, String description) throws Exception {
+        buildBedrock(root, author, description, null);
+    }
+
+    private void buildBedrock(File root, String author, String description, BuildProgressListener progress) throws Exception {
+        Set<String> subpackSet = new HashSet<>();
+        for (Entry e : entries) {
+            subpackSet.add(e.subpack);
+        }
+        File rootTextures = new File(root, "textures");
+        rootTextures.mkdirs();
+        Map<String, File> subpackTexturesMap = new HashMap<>();
+        for (String sub : subpackSet) {
+            if (sub.isEmpty()) continue;
+            File subDir = new File(root, "subpacks/" + sub + "/textures");
+            subDir.mkdirs();
+            subpackTexturesMap.put(sub, subDir);
+        }
+
+        Map<String, Map<String, String>> itemMapBySubpack = new HashMap<>();
+        Map<String, Map<String, String>> terrainMapBySubpack = new HashMap<>();
+
+        int totalEntries = Math.max(1, entries.size());
+        int processedEntries = 0;
+        for (Entry e : entries) {
+            String sub = e.subpack;
+            File targetTexturesDir;
+            if (sub.isEmpty()) {
+                targetTexturesDir = rootTextures;
+            } else {
+                targetTexturesDir = subpackTexturesMap.get(sub);
+                if (targetTexturesDir == null) continue;
+            }
+
+            String[] p = e.id.split(":", 2);
+            if (p.length != 2) continue;
+            String namespace = p[0];
+            String id = p[1];
+            String base = safe(id);
+            File out = null;
+            String relPath = null;
+
+            if ("物品".equals(e.type)) {
+                out = new File(targetTexturesDir, "items/" + namespace + "_" + base + ".png");
+                relPath = "textures/items/" + namespace + "_" + base;
+                copyAsPng(new File(e.imagePath), out);
+                itemMapBySubpack.computeIfAbsent(sub, k -> new LinkedHashMap<>()).put(e.id, relPath);
+            } else if ("方块".equals(e.type)) {
+                out = new File(targetTexturesDir, "blocks/" + namespace + "_" + base + ".png");
+                relPath = "textures/blocks/" + namespace + "_" + base;
+                copyAsPng(new File(e.imagePath), out);
+                terrainMapBySubpack.computeIfAbsent(sub, k -> new LinkedHashMap<>()).put(e.id, relPath);
+            } else if ("生物".equals(e.type)) {
+                out = new File(targetTexturesDir, "entity/" + namespace + "_" + base + ".png");
+                copyAsPng(new File(e.imagePath), out);
+            } else if ("天空".equals(e.type)) {
+                out = new File(targetTexturesDir, "environment/sky.png");
+                copyAsPng(new File(e.imagePath), out);
+            } else if ("UI".equals(e.type)) {
+                out = new File(targetTexturesDir, "ui/" + namespace + "_" + base + ".png");
+                copyAsPng(new File(e.imagePath), out);
+            }
+
+            processedEntries++;
+            if (progress != null) {
+                int progressPercent = 5 + (int) ((processedEntries / (float) totalEntries) * 55f);
+                progress.update(progressPercent, "正在处理纹理 " + processedEntries + "/" + totalEntries);
+            }
+        }
+
+        if (progress != null) progress.update(62, "正在生成纹理映射...");
+        for (Map.Entry<String, Map<String, String>> entry : itemMapBySubpack.entrySet()) {
+            String sub = entry.getKey();
+            File targetDir = sub.isEmpty() ? rootTextures : subpackTexturesMap.get(sub);
+            if (targetDir != null) {
+                writeItemTextureJson(new File(targetDir, "item_texture.json"), entry.getValue());
+            }
+        }
+        for (Map.Entry<String, Map<String, String>> entry : terrainMapBySubpack.entrySet()) {
+            String sub = entry.getKey();
+            File targetDir = sub.isEmpty() ? rootTextures : subpackTexturesMap.get(sub);
+            if (targetDir != null) {
+                writeTerrainTextureJson(new File(targetDir, "terrain_texture.json"), entry.getValue());
+            }
+        }
+
+        boolean usesSettings = false;
+        for (Entry e : entries) {
+            if (e.independentEnabled && !e.switchName.isEmpty()) {
+                usesSettings = true;
+                break;
+            }
+        }
+
+        int[] minVersion;
+        if (usesSettings) {
+            minVersion = new int[]{1, 21, 110};
+        } else {
+            minVersion = new int[]{1, 16, 0};
+        }
+
+        String h = UUID.randomUUID().toString();
+        String m = UUID.randomUUID().toString();
+        String safeAuthor = author == null || author.trim().isEmpty() ? "熬糕aogao" : author.trim();
+        String versionStr = "1.0.0";
+
+        StringBuilder manifest = new StringBuilder();
+        manifest.append("{\n");
+        manifest.append("  \"format_version\": 3,\n");
+        manifest.append("  \"header\": {\n");
+        manifest.append("    \"name\": \"MC 基岩版材质编辑器\",\n");
+        manifest.append("    \"description\": \"" + json(description) + " | 作者：" + json(safeAuthor) + " | 禁止商业使用\",\n");
+        manifest.append("    \"uuid\": \"" + h + "\",\n");
+        manifest.append("    \"version\": \"" + versionStr + "\",\n");
+        manifest.append("    \"min_engine_version\": \"" + minVersion[0] + "." + minVersion[1] + "." + minVersion[2] + "\",\n");
+        manifest.append("    \"pack_optimization_version\": \"0.1.0\"\n");
+        manifest.append("  },\n");
+        manifest.append("  \"modules\": [{\n");
+        manifest.append("    \"type\": \"resources\",\n");
+        manifest.append("    \"uuid\": \"" + m + "\",\n");
+        manifest.append("    \"version\": \"" + versionStr + "\"\n");
+        manifest.append("  }],\n");
+        manifest.append("  \"metadata\": {\n");
+        manifest.append("    \"authors\": [\"" + json(safeAuthor) + "\"]\n");
+        manifest.append("  }\n");
+
+        List<String> subpackNames = new ArrayList<>(subpackSet);
+        subpackNames.remove("");
+        if (!subpackNames.isEmpty()) {
+            manifest.append("  ,\"subpacks\": [\n");
+            int idx = 0;
+            for (String sub : subpackNames) {
+                manifest.append("    {\n");
+                manifest.append("      \"folder_name\": \"" + json(sub) + "\",\n");
+                manifest.append("      \"name\": \"" + json(sub) + "\",\n");
+                manifest.append("      \"memory_performance_tier\": 0\n");
+                manifest.append("    }" + (++idx < subpackNames.size() ? "," : ""));
+                manifest.append("\n");
+            }
+            manifest.append("  ]\n");
+        }
+
+        Map<String, Boolean> switchMap = new LinkedHashMap<>();
+        for (Entry e : entries) {
+            if (e.independentEnabled && !e.switchName.isEmpty()) {
+                switchMap.put(e.switchName, false);
+            }
+        }
+        if (!switchMap.isEmpty()) {
+            manifest.append("  ,\"settings\": [\n");
+            int idx = 0;
+            for (Map.Entry<String, Boolean> entry : switchMap.entrySet()) {
+                String key = entry.getKey();
+                String safeName = key.matches("\\d+") ? "switch_" + key : key.replace(" ", "_").toLowerCase();
+                manifest.append("    {\n");
+                manifest.append("      \"type\": \"toggle\",\n");
+                manifest.append("      \"text\": \"" + json(key) + "\",\n");
+                manifest.append("      \"name\": \"" + json(safeName) + "\",\n");
+                manifest.append("      \"default\": " + entry.getValue() + "\n");
+                manifest.append("    }" + (++idx < switchMap.size() ? "," : ""));
+                manifest.append("\n");
+            }
+            manifest.append("  ]\n");
+        }
+
+        manifest.append("}\n");
+        write(new File(root, "manifest.json"), manifest.toString());
+
+        String info = "MC 基岩版材质编辑器 - 制作信息\n\n作者：" + safeAuthor + "\n开发成员：熬糕aogao\n\n使用许可：仅限个人与非商业用途。\n禁止将本材质包用于商业销售、付费服务、商业宣传或其他商业用途。\n如需商业使用，请先联系作者获得授权。\n\n本文件随材质包一起发布，请勿删除。\n";
+        write(new File(root, "制作信息.txt"), info);
+        if (progress != null) progress.update(70, "材质文件准备完成");
+    }
+
+    private void writeItemTextureJson(File f, Map<String, String> map) throws Exception {
+        StringBuilder j = new StringBuilder();
+        j.append("{\n  \"resource_pack_name\":\"MC 基岩版材质编辑器\",\n  \"texture_name\":\"atlas.items\",\n  \"texture_data\":{\n");
+        int i = 0;
+        for (Map.Entry<String, String> x : map.entrySet()) {
+            if (i++ > 0) j.append(",\n");

@@ -1,0 +1,107 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="com.k9t2.mcpackmaker"
+4    android:versionCode="3"
+5    android:versionName="1.2.0-bedrock" >
+6
+7    <uses-sdk
+8        android:minSdkVersion="26"
+9        android:targetSdkVersion="35" />
+10
+11    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+11-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:5:5-80
+11-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:5:22-77
+12    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+12-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:6:5-81
+12-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:6:22-78
+13
+14    <permission
+14-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:22:5-24:47
+15        android:name="com.k9t2.mcpackmaker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+15-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:23:9-81
+16        android:protectionLevel="signature" />
+16-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:24:9-44
+17
+18    <uses-permission android:name="com.k9t2.mcpackmaker.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" />
+18-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:26:5-97
+18-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:26:22-94
+19
+20    <application
+20-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:8:5-37:19
+21        android:allowBackup="true"
+21-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:9:9-35
+22        android:appComponentFactory="androidx.core.app.CoreComponentFactory"
+22-->[androidx.core:core:1.9.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b0c111162eb7c932981eec55b09c2464/transformed/core-1.9.0/AndroidManifest.xml:28:18-86
+23        android:debuggable="true"
+24        android:extractNativeLibs="false"
+25        android:icon="@mipmap/ic_launcher"
+25-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:10:9-43
+26        android:label="@string/app_name"
+26-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:11:9-41
+27        android:theme="@style/Theme.AppCompat.NoActionBar"
+27-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:12:9-59
+28        android:usesCleartextTraffic="true" >
+28-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:13:9-44
+29        <activity
+29-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:15:9-24:20
+30            android:name="com.k9t2.mcpackmaker.MainActivity"
+30-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:16:13-41
+31            android:configChanges="orientation|screenSize"
+31-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:18:13-59
+32            android:exported="true"
+32-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:17:13-36
+33            android:theme="@style/Theme.AppCompat.NoActionBar" >
+33-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:19:13-63
+34            <intent-filter>
+34-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:20:13-23:29
+35                <action android:name="android.intent.action.MAIN" />
+35-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:21:17-69
+35-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:21:25-66
+36
+37                <category android:name="android.intent.category.LAUNCHER" />
+37-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:22:17-77
+37-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:22:27-74
+38            </intent-filter>
+39        </activity>
+40
+41        <!-- FileProvider 配置（用于裁剪功能） -->
+42        <provider
+43            android:name="androidx.core.content.FileProvider"
+43-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:28:13-62
+44            android:authorities="com.k9t2.mcpackmaker.fileprovider"
+44-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:29:13-64
+45            android:exported="false"
+45-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:30:13-37
+46            android:grantUriPermissions="true" >
+46-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:31:13-47
+47            <meta-data
+47-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:32:13-34:54
+48                android:name="android.support.FILE_PROVIDER_PATHS"
+48-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:33:17-67
+49                android:resource="@xml/file_paths" />
+49-->/storage/emulated/0/软件/材质更换/MC材质编辑器_UI优化版_Termux工程/mczip/app/src/main/AndroidManifest.xml:34:17-51
+50        </provider>
+51        <provider
+51-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:24:9-32:20
+52            android:name="androidx.startup.InitializationProvider"
+52-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:25:13-67
+53            android:authorities="com.k9t2.mcpackmaker.androidx-startup"
+53-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:26:13-68
+54            android:exported="false" >
+54-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:27:13-37
+55            <meta-data
+55-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:29:13-31:52
+56                android:name="androidx.emoji2.text.EmojiCompatInitializer"
+56-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:30:17-75
+57                android:value="androidx.startup" />
+57-->[androidx.emoji2:emoji2:1.2.0] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b295454456b6afb8b207d4b6b375b6f9/transformed/emoji2-1.2.0/AndroidManifest.xml:31:17-49
+58            <meta-data
+58-->[androidx.lifecycle:lifecycle-process:2.4.1] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b23fced7d095aef4e59018393b5c0406/transformed/lifecycle-process-2.4.1/AndroidManifest.xml:31:13-33:52
+59                android:name="androidx.lifecycle.ProcessLifecycleInitializer"
+59-->[androidx.lifecycle:lifecycle-process:2.4.1] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b23fced7d095aef4e59018393b5c0406/transformed/lifecycle-process-2.4.1/AndroidManifest.xml:32:17-78
+60                android:value="androidx.startup" />
+60-->[androidx.lifecycle:lifecycle-process:2.4.1] /data/data/com.termux/files/home/.gradle/caches/8.10.2/transforms/b23fced7d095aef4e59018393b5c0406/transformed/lifecycle-process-2.4.1/AndroidManifest.xml:33:17-49
+61        </provider>
+62    </application>
+63
+64</manifest>
